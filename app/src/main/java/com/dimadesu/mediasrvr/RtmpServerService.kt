@@ -125,6 +125,16 @@ class RtmpServerService : Service() {
     // Global registry of streams -> publisher session
     private val streams = mutableMapOf<String, RtmpSession>()
 
+    // helper classes for chunk reassembly
+    private class HeaderState(var timestamp: Int, var length: Int, var type: Int, var streamId: Int)
+    private class InPacket(var totalLength: Int, var type: Int, var streamId: Int) {
+        var buffer: ByteArray = ByteArray(totalLength)
+        var received: Int = 0
+        var bytesReadSinceStart: Int = 0
+        var lastAck: Int = 0
+        var ackWindow: Int = 0
+    }
+
     inner class RtmpSession(
         private val socket: Socket,
         private val input: DataInputStream,
@@ -146,13 +156,16 @@ class RtmpServerService : Service() {
         fun run() {
             serverScope.launch {
                 try {
-                    // simple loop: read RTMP messages and handle
+                    // chunk reassembly: keep per-cid header state and buffers
+                    val headerStates = mutableMapOf<Int, HeaderState>()
+                    val inPackets = mutableMapOf<Int, InPacket>()
+
                     while (!socket.isClosed) {
+                        // read basic header
                         val header0 = input.readUnsignedByte()
-                        val fmt = header0 shr 6
+                        var fmt = header0 shr 6
                         var cid = header0 and 0x3f
                         if (cid == 0) {
-                            // 2-byte header
                             val b = input.readUnsignedByte()
                             cid = 64 + b
                         } else if (cid == 1) {
@@ -161,41 +174,62 @@ class RtmpServerService : Service() {
                             cid = 64 + b1 + (b2 shl 8)
                         }
 
-                        val headerLen = when (fmt) {
-                            0 -> 11
-                            1 -> 7
-                            2 -> 3
-                            else -> 0
-                        }
-
-                        val headerBuf = ByteArray(headerLen)
-                        if (headerLen > 0) input.readFully(headerBuf)
-
+                        // read message header according to fmt, using last header state when required
+                        val prev = headerStates[cid]
                         var timestamp = 0
                         var msgLength = 0
                         var msgType = 0
                         var msgStreamId = 0
 
-                        var offset = 0
-                        if (fmt <= 2) {
-                            timestamp = ((headerBuf[offset].toInt() and 0xff) shl 16) or
-                                    ((headerBuf[offset + 1].toInt() and 0xff) shl 8) or
-                                    (headerBuf[offset + 2].toInt() and 0xff)
-                            offset += 3
-                        }
-                        if (fmt <= 1) {
-                            msgLength = ((headerBuf[offset].toInt() and 0xff) shl 16) or
-                                    ((headerBuf[offset + 1].toInt() and 0xff) shl 8) or
-                                    (headerBuf[offset + 2].toInt() and 0xff)
-                            msgType = headerBuf[offset + 3].toInt() and 0xff
-                            offset += 4
-                        }
                         if (fmt == 0) {
-                            // little-endian stream id
-                            msgStreamId = (headerBuf[offset].toInt() and 0xff) or
-                                    ((headerBuf[offset + 1].toInt() and 0xff) shl 8) or
-                                    ((headerBuf[offset + 2].toInt() and 0xff) shl 16) or
-                                    ((headerBuf[offset + 3].toInt() and 0xff) shl 24)
+                            // 11 bytes
+                            val buf = ByteArray(11)
+                            input.readFully(buf)
+                            timestamp = ((buf[0].toInt() and 0xff) shl 16) or
+                                    ((buf[1].toInt() and 0xff) shl 8) or
+                                    (buf[2].toInt() and 0xff)
+                            msgLength = ((buf[3].toInt() and 0xff) shl 16) or
+                                    ((buf[4].toInt() and 0xff) shl 8) or
+                                    (buf[5].toInt() and 0xff)
+                            msgType = buf[6].toInt() and 0xff
+                            msgStreamId = (buf[7].toInt() and 0xff) or
+                                    ((buf[8].toInt() and 0xff) shl 8) or
+                                    ((buf[9].toInt() and 0xff) shl 16) or
+                                    ((buf[10].toInt() and 0xff) shl 24)
+                        } else if (fmt == 1) {
+                            val buf = ByteArray(7)
+                            input.readFully(buf)
+                            timestamp = ((buf[0].toInt() and 0xff) shl 16) or
+                                    ((buf[1].toInt() and 0xff) shl 8) or
+                                    (buf[2].toInt() and 0xff)
+                            msgLength = ((buf[3].toInt() and 0xff) shl 16) or
+                                    ((buf[4].toInt() and 0xff) shl 8) or
+                                    (buf[5].toInt() and 0xff)
+                            msgType = buf[6].toInt() and 0xff
+                            if (prev != null) {
+                                msgStreamId = prev.streamId
+                            }
+                        } else if (fmt == 2) {
+                            val buf = ByteArray(3)
+                            input.readFully(buf)
+                            timestamp = ((buf[0].toInt() and 0xff) shl 16) or
+                                    ((buf[1].toInt() and 0xff) shl 8) or
+                                    (buf[2].toInt() and 0xff)
+                            if (prev != null) {
+                                msgLength = prev.length
+                                msgType = prev.type
+                                msgStreamId = prev.streamId
+                            }
+                        } else { // fmt == 3
+                            if (prev != null) {
+                                timestamp = prev.timestamp
+                                msgLength = prev.length
+                                msgType = prev.type
+                                msgStreamId = prev.streamId
+                            } else {
+                                Log.e(TAGS, "fmt=3 with no previous header for cid=$cid")
+                                continue
+                            }
                         }
 
                         // extended timestamp
@@ -203,16 +237,51 @@ class RtmpServerService : Service() {
                             timestamp = input.readInt()
                         }
 
-                        // read payload fully (simple implementation: read msgLength bytes)
-                        val payload = ByteArray(msgLength)
-                        var got = 0
-                        while (got < msgLength) {
-                            val r = input.read(payload, got, msgLength - got)
-                            if (r <= 0) throw java.io.EOFException("Unexpected EOF while reading payload")
-                            got += r
+                        // update header state
+                        headerStates[cid] = HeaderState(timestamp, msgLength, msgType, msgStreamId)
+
+                        // packet buffer for this cid
+                        val pkt = inPackets.getOrPut(cid) { InPacket(msgLength, msgType, msgStreamId) }
+                        // if new message, reset buffer
+                        if (pkt.totalLength != msgLength) {
+                            pkt.totalLength = msgLength
+                            pkt.type = msgType
+                            pkt.streamId = msgStreamId
+                            pkt.buffer = ByteArray(msgLength)
+                            pkt.received = 0
                         }
 
-                        handleMessage(msgType, msgStreamId, timestamp, payload)
+                        // read chunk payload (could be partial)
+                        val toRead = minOf(inChunkSize - (pkt.received % inChunkSize), msgLength - pkt.received)
+                        var got = 0
+                        while (got < toRead) {
+                            val r = input.read(pkt.buffer, pkt.received + got, toRead - got)
+                            if (r <= 0) throw java.io.EOFException("Unexpected EOF while reading chunk payload")
+                            got += r
+                        }
+                        pkt.received += got
+
+                        // update ack counters
+                        pkt.bytesReadSinceStart += got
+                        if (pkt.bytesReadSinceStart - pkt.lastAck >= pkt.ackWindow && pkt.ackWindow > 0) {
+                            pkt.lastAck = pkt.bytesReadSinceStart
+                            // send acknowledgement
+                            val ackBuf = ByteArray(4)
+                            val v = pkt.bytesReadSinceStart
+                            ackBuf[0] = ((v shr 24) and 0xff).toByte()
+                            ackBuf[1] = ((v shr 16) and 0xff).toByte()
+                            ackBuf[2] = ((v shr 8) and 0xff).toByte()
+                            ackBuf[3] = (v and 0xff).toByte()
+                            sendRtmpMessage(3, 0, ackBuf)
+                        }
+
+                        if (pkt.received >= pkt.totalLength) {
+                            // full message received
+                            val full = pkt.buffer
+                            handleMessage(pkt.type, pkt.streamId, timestamp, full)
+                            // reset for next message
+                            inPackets.remove(cid)
+                        }
                     }
                 } catch (e: Exception) {
                     Log.e(TAGS, "session error", e)
@@ -221,6 +290,8 @@ class RtmpServerService : Service() {
                 }
             }
         }
+
+
 
         private fun cleanup() {
             // if publishing, remove from streams
@@ -256,7 +327,32 @@ class RtmpServerService : Service() {
                     // ignore
                 }
                 4 -> { // user control event
-                    // ignore
+                    if (payload.size >= 2) {
+                        val eventType = ((payload[0].toInt() and 0xff) shl 8) or (payload[1].toInt() and 0xff)
+                        when (eventType) {
+                            0 -> { // StreamBegin
+                            }
+                            1 -> { // StreamEOF
+                            }
+                            3 -> { // Set buffer length
+                            }
+                            6 -> { // Ping (client -> server)
+                                // payload: eventType(2) + time(4)
+                                if (payload.size >= 6) {
+                                    val time = ((payload[2].toInt() and 0xff) shl 24) or ((payload[3].toInt() and 0xff) shl 16) or ((payload[4].toInt() and 0xff) shl 8) or (payload[5].toInt() and 0xff)
+                                    // respond with PingResponse (event type 7)
+                                    val resp = ByteArray(6)
+                                    resp[0] = 0
+                                    resp[1] = 7
+                                    resp[2] = ((time shr 24) and 0xff).toByte()
+                                    resp[3] = ((time shr 16) and 0xff).toByte()
+                                    resp[4] = ((time shr 8) and 0xff).toByte()
+                                    resp[5] = (time and 0xff).toByte()
+                                    sendRtmpMessage(4, 0, resp)
+                                }
+                            }
+                        }
+                    }
                 }
                 8, 9 -> { // audio(8) or video(9)
                     // forward to players if this session is publisher
@@ -457,11 +553,26 @@ class RtmpServerService : Service() {
     class Amf0Parser(private val data: ByteArray) {
         private var pos = 0
 
+        private fun readUInt16(): Int {
+            val v = ((data[pos].toInt() and 0xff) shl 8) or (data[pos + 1].toInt() and 0xff)
+            pos += 2
+            return v
+        }
+
+        private fun readUInt32(): Long {
+            val v = ((data[pos].toLong() and 0xffL) shl 24) or
+                    ((data[pos + 1].toLong() and 0xffL) shl 16) or
+                    ((data[pos + 2].toLong() and 0xffL) shl 8) or
+                    (data[pos + 3].toLong() and 0xffL)
+            pos += 4
+            return v
+        }
+
         fun readAmf0(): Any? {
             if (pos >= data.size) return null
             val marker = data[pos++].toInt() and 0xff
             return when (marker) {
-                0 -> { // number
+                0 -> { // number (8 bytes)
                     val b = data.copyOfRange(pos, pos + 8)
                     pos += 8
                     java.nio.ByteBuffer.wrap(b).double
@@ -470,8 +581,8 @@ class RtmpServerService : Service() {
                     val v = data[pos++].toInt() != 0
                     v
                 }
-                2 -> { // string
-                    val len = ((data[pos++].toInt() and 0xff) shl 8) or (data[pos++].toInt() and 0xff)
+                2 -> { // string (short)
+                    val len = readUInt16()
                     val s = String(data, pos, len, Charsets.UTF_8)
                     pos += len
                     s
@@ -479,10 +590,13 @@ class RtmpServerService : Service() {
                 3 -> { // object
                     val map = mutableMapOf<String, Any?>()
                     while (true) {
-                        val keyLen = ((data[pos++].toInt() and 0xff) shl 8) or (data[pos++].toInt() and 0xff)
+                        if (pos + 2 > data.size) break
+                        val keyLen = readUInt16()
                         if (keyLen == 0) {
-                            val end = data[pos++].toInt() and 0xff
-                            if (end == 9) break
+                            if (pos >= data.size) break
+                            val endMarker = data[pos++].toInt() and 0xff
+                            if (endMarker == 9) break
+                            else continue
                         }
                         val key = String(data, pos, keyLen, Charsets.UTF_8)
                         pos += keyLen
@@ -491,7 +605,44 @@ class RtmpServerService : Service() {
                     }
                     map
                 }
-                5 -> null
+                8 -> { // ECMA array
+                    if (pos + 4 > data.size) return null
+                    val _count = readUInt32()
+                    val map = mutableMapOf<String, Any?>()
+                    while (true) {
+                        if (pos + 2 > data.size) break
+                        val keyLen = readUInt16()
+                        if (keyLen == 0) {
+                            if (pos >= data.size) break
+                            val endMarker = data[pos++].toInt() and 0xff
+                            if (endMarker == 9) break
+                            else continue
+                        }
+                        val key = String(data, pos, keyLen, Charsets.UTF_8)
+                        pos += keyLen
+                        val v = readAmf0()
+                        map[key] = v
+                    }
+                    map
+                }
+                10 -> { // strict array
+                    if (pos + 4 > data.size) return null
+                    val count = readUInt32().toInt()
+                    val list = mutableListOf<Any?>()
+                    for (i in 0 until count) {
+                        list.add(readAmf0())
+                    }
+                    list
+                }
+                12 -> { // long string
+                    if (pos + 4 > data.size) return null
+                    val len = readUInt32().toInt()
+                    if (pos + len > data.size) return null
+                    val s = String(data, pos, len, Charsets.UTF_8)
+                    pos += len
+                    s
+                }
+                5, 6 -> null // null or undefined
                 else -> null
             }
         }
