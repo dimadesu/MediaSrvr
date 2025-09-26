@@ -49,6 +49,11 @@ class RtmpSession(
     // players subscribed to a stream name -> list of sessions
     val players = mutableSetOf<RtmpSession>()
 
+    // monitor and activity tracking for publishers: if no AV/data arrives after this timeout, log and nudge
+    private var lastMediaTimestampMs: Long = 0L
+    private var publishMonitorJob: Job? = null
+    private var lastPublishUsedAmf3: Boolean = false
+
     fun run(): Job {
         return serverScope.launch {
             try {
@@ -251,6 +256,7 @@ class RtmpSession(
         } catch (e: Exception) {
             Log.i(TAGS, "Error dumping recent inbound bytes: ${e.message}")
         }
+        try { publishMonitorJob?.cancel() } catch (_: Exception) {}
     }
 
     private fun handleMessage(type: Int, streamId: Int, timestamp: Int, payload: ByteArray) {
@@ -320,6 +326,9 @@ class RtmpSession(
                             Log.i(TAGS, "AV payload base64(len=${payload.size})=$b64")
                         } catch (e: Exception) { /* ignore */ }
                     }
+                    // record that we've seen media from this publisher and cancel any monitor
+                    lastMediaTimestampMs = System.currentTimeMillis()
+                    publishMonitorJob?.cancel()
                 } catch (e: Exception) { /* ignore */ }
 
                 // forward to players if this session is publisher
@@ -333,6 +342,8 @@ class RtmpSession(
                                 // AAC sequence header
                                 aacSequenceHeader = payload.copyOf()
                                 Log.i(TAGS, "Cached AAC sequence header, len=${aacSequenceHeader?.size} preview=${aacSequenceHeader?.take(32)?.joinToString(" ") { String.format("%02x", it) }}")
+                                    lastMediaTimestampMs = System.currentTimeMillis()
+                                    publishMonitorJob?.cancel()
                             }
                         } else if (type == 9 && payload.isNotEmpty()) {
                             // video: check AVC sequence header
@@ -343,6 +354,8 @@ class RtmpSession(
                                 if (avcPacketType == 0) {
                                     avcSequenceHeader = payload.copyOf()
                                     Log.i(TAGS, "Cached AVC sequence header, len=${avcSequenceHeader?.size} preview=${avcSequenceHeader?.take(32)?.joinToString(" ") { String.format("%02x", it) }}")
+                                        lastMediaTimestampMs = System.currentTimeMillis()
+                                        publishMonitorJob?.cancel()
                                 }
                             }
                         }
@@ -368,6 +381,8 @@ class RtmpSession(
                                     Log.i(TAGS, "Metadata payload base64(len=${metaData?.size})=$b64")
                                 } catch (e: Exception) { /* ignore */ }
                             }
+                        lastMediaTimestampMs = System.currentTimeMillis()
+                        publishMonitorJob?.cancel()
                     } else {
                         Log.i(TAGS, "Data message received name=$name len=${payload.size} preview=${payload.take(64).joinToString(" ") { String.format("%02x", it) }}")
                     }
@@ -488,6 +503,39 @@ class RtmpSession(
                         Log.i(TAGS, "OnStatus payload base64(len=${notif.size})=$b64")
                     } catch (e: Exception) { /* ignore */ }
                     sendRtmpMessage(18, pubStream, notif) // data message
+                    // start monitor: if no media frames or metadata arrive within N seconds, nudge and dump recent bytes
+                    lastMediaTimestampMs = System.currentTimeMillis()
+                    publishMonitorJob?.cancel()
+                    publishMonitorJob = serverScope.launch {
+                        delay(5000)
+                        // if no media after timeout, log and dump recent inbound bytes
+                        val now = System.currentTimeMillis()
+                        if (now - lastMediaTimestampMs >= 4000) {
+                            Log.i(TAGS, "No AV/data received from publisher session#$sessionId within timeout — dumping recent inbound bytes and sending diagnostic onStatus")
+                            try {
+                                val len = if (recentFull) recentBuf.size else recentPos
+                                val copy = ByteArray(len)
+                                if (recentFull) {
+                                    val tail = recentBuf.size - recentPos
+                                    System.arraycopy(recentBuf, recentPos, copy, 0, tail)
+                                    System.arraycopy(recentBuf, 0, copy, tail, recentPos)
+                                } else {
+                                    System.arraycopy(recentBuf, 0, copy, 0, recentPos)
+                                }
+                                val b64 = android.util.Base64.encodeToString(copy, android.util.Base64.NO_WRAP)
+                                Log.i(TAGS, "Publish monitor recent inbound base64(len=${len})=$b64")
+                            } catch (e: Exception) {
+                                Log.i(TAGS, "Error in publish monitor dump: ${e.message}")
+                            }
+                            // send a diagnostic onStatus to the publisher
+                            val diag = buildOnStatus("error", "NetStream.Publish.NoMedia", "No media frames received")
+                            try {
+                                val db64 = android.util.Base64.encodeToString(diag, android.util.Base64.NO_WRAP)
+                                Log.i(TAGS, "Sending diagnostic onStatus base64(len=${diag.size})=$db64")
+                            } catch (e: Exception) { /* ignore */ }
+                            sendRtmpMessage(18, pubStream, diag)
+                        }
+                    }
                     // attach any waiting players who tried to play before the publisher existed
                     val queued = waitingPlayers.remove(full)
                     if (queued != null) {
