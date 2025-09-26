@@ -17,7 +17,8 @@ class RtmpSession(
 ) {
     private val TAGS = "RtmpSession"
     // set to true temporarily to emit full payload base64 dumps for AV/data messages
-    private val debugDumpPayloads = false
+    // NOTE: enable this only for debugging; it may produce large logs
+    private val debugDumpPayloads = true
     private var inChunkSize = 128
     private var outChunkSize = 128
     private var streamIdCounter = 1
