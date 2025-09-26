@@ -443,11 +443,12 @@ class RtmpSession(
                                 // notify player
                                 val pn = buildOnStatus("status", "NetStream.Play.Start", "Playing")
                                 p.sendRtmpMessage(18, p.playStreamId, pn)
-                                // send cached seq headers
+                                // send cached metadata first (matches Node-Media-Server ordering), then sequence headers
+                                this.metaData?.let { md ->
+                                    p.sendRtmpMessage(18, p.playStreamId, md)
+                                }
                                 this.aacSequenceHeader?.let { sh -> p.sendRtmpMessage(8, p.playStreamId, sh) }
                                 this.avcSequenceHeader?.let { sh -> p.sendRtmpMessage(9, p.playStreamId, sh) }
-                                    // send cached metadata if present
-                                    this.metaData?.let { md -> p.sendRtmpMessage(18, p.playStreamId, md) }
                             } catch (e: Exception) {
                                 Log.e(TAGS, "Error attaching queued player", e)
                             }
@@ -491,8 +492,12 @@ class RtmpSession(
                             buildOnStatusAmf3("status", "NetStream.Play.Start", "Playing")
                         } else buildOnStatus("status", "NetStream.Play.Start", "Playing")
                         sendRtmpMessage(18, playStreamId, notif)
-                        // send cached sequence headers (if any) to the newly joined player
+                        // send cached metadata first, then sequence headers (match Node-Media-Server)
                         try {
+                            pub.metaData?.let { md ->
+                                Log.i(TAGS, "Sending cached metadata to player=#$sessionId len=${md.size}")
+                                sendRtmpMessage(18, playStreamId, md)
+                            }
                             pub.aacSequenceHeader?.let { sh ->
                                 Log.i(TAGS, "Sending cached AAC seq header to player=#$sessionId len=${sh.size}")
                                 sendRtmpMessage(8, playStreamId, sh)
@@ -501,10 +506,6 @@ class RtmpSession(
                                 Log.i(TAGS, "Sending cached AVC seq header to player=#$sessionId len=${sh.size}")
                                 sendRtmpMessage(9, playStreamId, sh)
                             }
-                                pub.metaData?.let { md ->
-                                    Log.i(TAGS, "Sending cached metadata to player=#$sessionId len=${md.size}")
-                                    sendRtmpMessage(18, playStreamId, md)
-                                }
                         } catch (e: Exception) {
                             Log.i(TAGS, "Error sending cached seq headers: ${e.message}")
                         }
