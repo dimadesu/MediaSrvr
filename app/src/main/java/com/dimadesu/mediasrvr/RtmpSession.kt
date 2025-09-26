@@ -273,7 +273,7 @@ class RtmpSession(
             8, 9 -> { // audio(8) or video(9)
                 // diagnostic: always log incoming audio/video so we can see if frames arrive
                 try {
-                    val preview = payload.take(12).joinToString(" ") { String.format("%02x", it) }
+                    val preview = payload.take(32).joinToString(" ") { String.format("%02x", it) }
                     Log.i(TAGS, "Received av type=$type ts=$timestamp len=${payload.size} isPublishing=$isPublishing publishName=$publishStreamName preview=$preview")
                 } catch (e: Exception) { /* ignore */ }
 
@@ -287,7 +287,7 @@ class RtmpSession(
                             if (soundFormat == 10 && payload.size > 1 && payload[1].toInt() == 0) {
                                 // AAC sequence header
                                 aacSequenceHeader = payload.copyOf()
-                                Log.i(TAGS, "Cached AAC sequence header, len=${aacSequenceHeader?.size}")
+                                Log.i(TAGS, "Cached AAC sequence header, len=${aacSequenceHeader?.size} preview=${aacSequenceHeader?.take(32)?.joinToString(" ") { String.format("%02x", it) }}")
                             }
                         } else if (type == 9 && payload.isNotEmpty()) {
                             // video: check AVC sequence header
@@ -297,7 +297,7 @@ class RtmpSession(
                                 val avcPacketType = payload[1].toInt() and 0xff
                                 if (avcPacketType == 0) {
                                     avcSequenceHeader = payload.copyOf()
-                                    Log.i(TAGS, "Cached AVC sequence header, len=${avcSequenceHeader?.size}")
+                                    Log.i(TAGS, "Cached AVC sequence header, len=${avcSequenceHeader?.size} preview=${avcSequenceHeader?.take(32)?.joinToString(" ") { String.format("%02x", it) }}")
                                 }
                             }
                         }
@@ -315,10 +315,13 @@ class RtmpSession(
                     if (name != null && (name == "onMetaData" || name == "@setDataFrame")) {
                         // cache raw payload for new players
                         metaData = payload.copyOf()
-                        Log.i(TAGS, "Cached metadata from publisher=${publishStreamName} name=$name len=${metaData?.size}")
+                        val preview = metaData?.take(128)?.joinToString(" ") { String.format("%02x", it) }
+                        Log.i(TAGS, "Cached metadata from publisher=${publishStreamName} name=$name len=${metaData?.size} preview=${preview}")
+                    } else {
+                        Log.i(TAGS, "Data message received name=$name len=${payload.size} preview=${payload.take(64).joinToString(" ") { String.format("%02x", it) }}")
                     }
                 } catch (e: Exception) {
-                    Log.i(TAGS, "Error parsing data message: ${e.message}")
+                    Log.i(TAGS, "Error parsing data message: ${e.message} preview=${payload.take(64).joinToString(" ") { String.format("%02x", it) }}")
                 }
 
                 if (isPublishing && publishStreamName != null) {
@@ -538,8 +541,8 @@ class RtmpSession(
             try {
                 val outStreamId = if (p.playStreamId != 0) p.playStreamId else 1
                 // small preview of payload
-                val preview = payload.take(16).joinToString(" ") { String.format("%02x", it) }
-                Log.i(TAGS, "Forwarding type=$type ts=$timestamp len=${payload.size} -> player#${p.sessionId} outStreamId=$outStreamId preview=$preview")
+                val preview = payload.take(32).joinToString(" ") { String.format("%02x", it) }
+                Log.i(TAGS, "Forwarding type=$type ts=$timestamp len=${payload.size} -> player#${p.sessionId} outStreamId=$outStreamId preview=$preview publisher=${this.sessionId}")
                 p.sendRtmpMessage(type, outStreamId, payload, timestamp)
             } catch (e: Exception) {
                 Log.e(TAGS, "Error forwarding to player", e)
