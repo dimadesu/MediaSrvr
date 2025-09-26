@@ -57,6 +57,12 @@ class Amf3EncoderTest {
         assertNotNull(out)
         val self = out!!["self"]
         // the parser may return a placeholder for refs; at minimum, the nested object's 'self' should exist
-        assertTrue(self is Map<*, *> || self is String || self != null)
+        // Strict identity: the nested self reference should point to the same Map instance
+        if (self is Map<*, *>) {
+            assertTrue(self === out)
+        } else {
+            // fallback: ensure it's not null
+            assertNotNull(self)
+        }
     }
 }
