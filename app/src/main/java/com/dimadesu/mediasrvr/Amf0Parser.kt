@@ -118,4 +118,11 @@ class Amf0Parser(private val data: ByteArray) {
         }
         return out
     }
+
+    /**
+     * Peek the next AMF0 marker byte (without advancing). Returns null if no more data.
+     */
+    fun nextMarker(): Int? {
+        return if (pos < data.size) data[pos].toInt() and 0xff else null
+    }
 }

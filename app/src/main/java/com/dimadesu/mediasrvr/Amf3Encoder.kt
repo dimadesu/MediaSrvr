@@ -66,7 +66,11 @@ class Amf3Encoder {
             is Int -> writeAmf3Integer(v)
             is Double -> writeAmf3Double(v)
             is String -> writeAmf3StringValue(v)
-            is Map<*, *> -> writeAmf3Object(v as Map<String, Any?>)
+            is Map<*, *> -> {
+                @Suppress("UNCHECKED_CAST")
+                val typed = v as Map<String, Any?>
+                writeAmf3Object(typed)
+            }
             is List<*> -> writeAmf3Array(v)
             else -> {
                 // fallback to string representation
@@ -87,8 +91,9 @@ class Amf3Encoder {
         // inline trait: compute u29o as (propCount<<4) | (dynamic?8:0) | (externalizable?4:0) | 3
         val propNames = map.keys.toList()
         val propCount = propNames.size
-        val externalizable = false
-        val dynamic = false
+    // detect dynamic/externalizable markers from special keys if provided
+    val externalizable = map.containsKey("<externalizable>")
+    val dynamic = map.containsKey("<dynamic>")
         val u29o = (propCount shl 4) or (if (dynamic) 8 else 0) or (if (externalizable) 4 else 0) or 3
         writeU29(u29o)
         // typeName: empty
@@ -97,12 +102,31 @@ class Amf3Encoder {
         for (pn in propNames) writeAmf3StringInline(pn)
         // register trait
         traitRefs.add(Trait("", propNames, externalizable, dynamic))
-        // register object placeholder before writing values
+        // register object placeholder before writing values (allow references)
         val placeholder = mutableMapOf<String, Any?>()
         objectRefs.add(placeholder)
-        for (pn in propNames) {
-            writeValue(map[pn])
-            placeholder[pn] = map[pn]
+        if (externalizable) {
+            // write externalizable placeholder as empty for now (server-side encoding might not produce externalizable normally)
+            // leave placeholder entry
+            placeholder["<externalizable>"] = map["<externalizable>"] ?: "<externalizable>"
+            // no further payload written here
+        } else {
+            for (pn in propNames) {
+                writeValue(map[pn])
+                placeholder[pn] = map[pn]
+            }
+            if (dynamic) {
+                // write dynamic members (keys not in propNames)
+                for ((k, v) in map) {
+                    if (k in propNames) continue
+                    if (k == "<dynamic>" || k == "<externalizable>") continue
+                    writeAmf3StringInline(k)
+                    writeValue(v)
+                    placeholder[k] = v
+                }
+                // end dynamic with empty string
+                writeU29(1) // empty string header (0<<1 | 1)
+            }
         }
     }
 

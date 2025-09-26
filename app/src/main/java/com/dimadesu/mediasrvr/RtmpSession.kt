@@ -324,7 +324,12 @@ class RtmpSession(
                     Log.i(TAGS, "AMF dump error: ${e.message}")
                 }
                 if (cmd is String) {
-                    handleCommand(cmd, amf, streamId)
+                    // detect if the remaining args are AMF3-wrapped (AMF0 marker 0x11)
+                    val useAmf3 = when (amf.nextMarker()) {
+                        0x11 -> true
+                        else -> false
+                    }
+                    handleCommand(cmd, amf, streamId, useAmf3)
                 }
             }
             else -> {
@@ -333,7 +338,7 @@ class RtmpSession(
         }
     }
 
-    private fun handleCommand(cmd: String, amf: Amf0Parser, msgStreamId: Int) {
+    private fun handleCommand(cmd: String, amf: Amf0Parser, msgStreamId: Int, useAmf3: Boolean) {
         when (cmd) {
             "connect" -> {
                 val transId = amf.readAmf0() as? Double ?: 0.0
@@ -343,7 +348,7 @@ class RtmpSession(
                 }
                 // send _result for connect
                 val trans = transId
-                val resp = buildConnectResult(trans)
+                val resp = if (useAmf3) buildConnectResultAmf3(trans) else buildConnectResult(trans)
                 sendRtmpMessage(20, 0, resp)
                 Log.i(TAGS, "Handled connect, app=$appName")
             }
@@ -353,7 +358,7 @@ class RtmpSession(
                 lastStreamIdAllocated += 1
                 val streamId = lastStreamIdAllocated
                 // track publish/play stream ids accordingly (createStream is typically used by both)
-                val resp = buildCreateStreamResult(transId, streamId)
+                val resp = if (useAmf3) buildCreateStreamResultAmf3(transId, streamId) else buildCreateStreamResult(transId, streamId)
                 sendRtmpMessage(20, 0, resp)
             }
             "publish" -> {
@@ -387,7 +392,7 @@ class RtmpSession(
                     RtmpServerState.updateSession(sessionId, true, full)
                     Log.i(TAGS, "[session#$sessionId] Client started publishing: $full")
                     // send onStatus NetStream.Publish.Start to publisher
-                    val notif = buildOnStatus("status", "NetStream.Publish.Start", "Publishing")
+                    val notif = if (useAmf3) buildOnStatusAmf3("status", "NetStream.Publish.Start", "Publishing") else buildOnStatus("status", "NetStream.Publish.Start", "Publishing")
                     sendRtmpMessage(18, 1, notif) // data message
                     // attach any waiting players who tried to play before the publisher existed
                     val queued = waitingPlayers.remove(full)
@@ -442,7 +447,7 @@ class RtmpSession(
                         RtmpServerState.updateSession(pub.sessionId, true, pub.publishStreamName)
                         Log.i(TAGS, "[session#$sessionId] Client joined as player for $full (publisher=#${pub.sessionId}) playStreamId=$playStreamId")
                         // send onStatus Play.Start
-                        val notif = buildOnStatus("status", "NetStream.Play.Start", "Playing")
+                        val notif = if (useAmf3) buildOnStatusAmf3("status", "NetStream.Play.Start", "Playing") else buildOnStatus("status", "NetStream.Play.Start", "Playing")
                         sendRtmpMessage(18, playStreamId, notif)
                         // send cached sequence headers (if any) to the newly joined player
                         try {
@@ -611,6 +616,19 @@ class RtmpSession(
         return baos.toByteArray()
     }
 
+    // AMF3 encoded variants
+    private fun buildConnectResultAmf3(transId: Double): ByteArray {
+        val enc = Amf3Encoder()
+        // _result (string)
+        enc.writeValue("_result")
+        enc.writeValue(transId.toInt())
+        val props = mapOf("fmsVer" to "FMS/3,5,7,7009", "capabilities" to 31)
+        enc.writeValue(props)
+        val info = mapOf("level" to "status", "code" to "NetConnection.Connect.Success", "description" to "Connection succeeded.")
+        enc.writeValue(info)
+        return enc.toByteArray()
+    }
+
     private fun buildCreateStreamResult(transId: Double, streamId: Int): ByteArray {
         val baos = java.io.ByteArrayOutputStream()
         baos.write(buildStringAmf("_result"))
@@ -618,6 +636,15 @@ class RtmpSession(
         baos.write(5) // null
         baos.write(buildNumberAmf(streamId.toDouble()))
         return baos.toByteArray()
+    }
+
+    private fun buildCreateStreamResultAmf3(transId: Double, streamId: Int): ByteArray {
+        val enc = Amf3Encoder()
+        enc.writeValue("_result")
+        enc.writeValue(transId.toInt())
+        enc.writeValue(null)
+        enc.writeValue(streamId)
+        return enc.toByteArray()
     }
 
     private fun buildOnStatus(level: String, code: String, desc: String): ByteArray {
@@ -628,5 +655,15 @@ class RtmpSession(
         val info = mapOf("level" to level, "code" to code, "description" to desc)
         baos.write(buildObjectAmf(info))
         return baos.toByteArray()
+    }
+
+    private fun buildOnStatusAmf3(level: String, code: String, desc: String): ByteArray {
+        val enc = Amf3Encoder()
+        enc.writeValue("onStatus")
+        enc.writeValue(0)
+        enc.writeValue(null)
+        val info = mapOf("level" to level, "code" to code, "description" to desc)
+        enc.writeValue(info)
+        return enc.toByteArray()
     }
 }
