@@ -398,6 +398,7 @@ class RtmpSession(
                 // allocate a stream id local to this session
                 lastStreamIdAllocated += 1
                 val streamId = lastStreamIdAllocated
+                Log.i(TAGS, "Allocated local streamId=$streamId for createStream (session#$sessionId)")
                 // track publish/play stream ids accordingly (createStream is typically used by both)
                 val resp = if (useAmf3) {
                     Log.i(TAGS, "Using AMF3 response for createStream (session#$sessionId)")
@@ -431,6 +432,7 @@ class RtmpSession(
                     streams[full] = this
                     // record the message stream id the publisher used locally
                     publishStreamId = msgStreamId
+                    Log.i(TAGS, "publish received: client msgStreamId=$msgStreamId recorded publishStreamId=$publishStreamId (session#$sessionId)")
                     // Diagnostic logging
                     Log.i(TAGS, "[session#$sessionId] publish parsed name=$name full=$full transIdObj=$transIdObj")
                     RtmpServerState.registerStream(full, sessionId)
@@ -444,6 +446,11 @@ class RtmpSession(
                     } else buildOnStatus("status", "NetStream.Publish.Start", "Publishing")
                     // send onStatus back on the publisher's message stream id (msgStreamId)
                     val pubStream = if (publishStreamId != 0) publishStreamId else 1
+                    Log.i(TAGS, "Sending NetStream.Publish.Start on streamId=$pubStream for publisher session#$sessionId")
+                    try {
+                        val b64 = android.util.Base64.encodeToString(notif, android.util.Base64.NO_WRAP)
+                        Log.i(TAGS, "OnStatus payload base64(len=${notif.size})=$b64")
+                    } catch (e: Exception) { /* ignore */ }
                     sendRtmpMessage(18, pubStream, notif) // data message
                     // attach any waiting players who tried to play before the publisher existed
                     val queued = waitingPlayers.remove(full)
