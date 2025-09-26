@@ -503,35 +503,54 @@ class RtmpServerService : Service() {
         }
 
         private fun sendRtmpMessage(type: Int, streamId: Int, payload: ByteArray, timestamp: Int = 0) {
-            // build basic header fmt=0, cid 5 for video, 4 for audio, 3 for data
+            // choose channel id similar to Node-Media-Server conventions
+            // invoke -> channel 3, audio -> 4, video -> 5, data -> 6
             val cid = when (type) {
+                20 -> 3
                 8 -> 4
                 9 -> 5
                 else -> 6
             }
-            val fmt = 0
-            val basic = ((fmt shl 6) or (cid and 0x3f)).toByte()
-            val msgHeader = ByteArray(11)
-            // timestamp 3 bytes
-            msgHeader[0] = ((timestamp shr 16) and 0xff).toByte()
-            msgHeader[1] = ((timestamp shr 8) and 0xff).toByte()
-            msgHeader[2] = (timestamp and 0xff).toByte()
-            // msg length 3 bytes
-            msgHeader[3] = ((payload.size shr 16) and 0xff).toByte()
-            msgHeader[4] = ((payload.size shr 8) and 0xff).toByte()
-            msgHeader[5] = (payload.size and 0xff).toByte()
-            // type
-            msgHeader[6] = (type and 0xff).toByte()
-            // stream id little-endian
-            msgHeader[7] = (streamId and 0xff).toByte()
-            msgHeader[8] = ((streamId shr 8) and 0xff).toByte()
-            msgHeader[9] = ((streamId shr 16) and 0xff).toByte()
-            msgHeader[10] = ((streamId shr 24) and 0xff).toByte()
+
+            // For simplicity handle cid < 64 (single-byte basic header)
+            val maxChunk = outChunkSize
 
             synchronized(output) {
-                output.writeByte(basic.toInt())
-                output.write(msgHeader)
-                output.write(payload)
+                var remaining = payload.size
+                var offset = 0
+                var first = true
+                while (remaining > 0) {
+                    val chunkSize = if (first) minOf(maxChunk, remaining) else minOf(maxChunk, remaining)
+                    // basic header: fmt = 0 for first chunk, fmt = 3 for continuation
+                    val fmt = if (first) 0 else 3
+                    val basic = ((fmt shl 6) or (cid and 0x3f)).toByte()
+                    output.writeByte(basic.toInt())
+
+                    if (first) {
+                        // 11-byte message header for fmt=0
+                        val msgHeader = ByteArray(11)
+                        msgHeader[0] = ((timestamp shr 16) and 0xff).toByte()
+                        msgHeader[1] = ((timestamp shr 8) and 0xff).toByte()
+                        msgHeader[2] = (timestamp and 0xff).toByte()
+                        msgHeader[3] = ((payload.size shr 16) and 0xff).toByte()
+                        msgHeader[4] = ((payload.size shr 8) and 0xff).toByte()
+                        msgHeader[5] = (payload.size and 0xff).toByte()
+                        msgHeader[6] = (type and 0xff).toByte()
+                        // stream id little-endian
+                        msgHeader[7] = (streamId and 0xff).toByte()
+                        msgHeader[8] = ((streamId shr 8) and 0xff).toByte()
+                        msgHeader[9] = ((streamId shr 16) and 0xff).toByte()
+                        msgHeader[10] = ((streamId shr 24) and 0xff).toByte()
+                        output.write(msgHeader)
+                    }
+
+                    // write payload chunk
+                    output.write(payload, offset, chunkSize)
+
+                    remaining -= chunkSize
+                    offset += chunkSize
+                    first = false
+                }
                 output.flush()
             }
         }
