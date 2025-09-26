@@ -121,4 +121,70 @@ class Amf0ParserTest {
         assertEquals("x", arr[1] as String)
         assertNull(arr[2])
     }
+
+    @Test
+    fun testMultibyteLongString() {
+        // Long UTF-8 multibyte string (>65535 bytes). Use Japanese Hiragana 'あ' (3 bytes) repeated.
+        val count = 30000 // ~90k bytes
+        val long = "あ".repeat(count)
+        val baos = java.io.ByteArrayOutputStream()
+        baos.write(12) // long string marker
+        val lb = long.toByteArray(Charsets.UTF_8)
+        val lenBuf = java.nio.ByteBuffer.allocate(4).putInt(lb.size).array()
+        baos.write(lenBuf)
+        baos.write(lb)
+
+        val parser = Amf0Parser(baos.toByteArray())
+        val s = parser.readAmf0() as? String
+        assertNotNull(s)
+        assertEquals(count, s!!.length)
+    }
+
+    @Test
+    fun testEcmaArrayEmptyEnds() {
+        // ECMA array with declared length but immediate end marker (0 0 9) should yield empty map
+        val baos = java.io.ByteArrayOutputStream()
+        baos.write(8) // ECMA array
+        baos.write(java.nio.ByteBuffer.allocate(4).putInt(1).array())
+        // immediately write object end marker (empty key + 9)
+        baos.write(0)
+        baos.write(0)
+        baos.write(9)
+
+        val parser = Amf0Parser(baos.toByteArray())
+        val map = parser.readAmf0() as? Map<*, *>
+        assertNotNull(map)
+        assertTrue(map!!.isEmpty())
+    }
+
+    @Test
+    fun testObjectPropertyOrdering() {
+        // Object with properties in order: a=1, b=2. Verify ordering preserved in map keys.
+        val baos = java.io.ByteArrayOutputStream()
+        baos.write(3) // object
+        // key 'a'
+        val k1 = "a".toByteArray(Charsets.UTF_8)
+        baos.write((k1.size shr 8) and 0xff)
+        baos.write(k1.size and 0xff)
+        baos.write(k1)
+        baos.write(0)
+        baos.write(java.nio.ByteBuffer.allocate(8).putDouble(1.0).array())
+        // key 'b'
+        val k2 = "b".toByteArray(Charsets.UTF_8)
+        baos.write((k2.size shr 8) and 0xff)
+        baos.write(k2.size and 0xff)
+        baos.write(k2)
+        baos.write(0)
+        baos.write(java.nio.ByteBuffer.allocate(8).putDouble(2.0).array())
+        // end marker
+        baos.write(0)
+        baos.write(0)
+        baos.write(9)
+
+        val parser = Amf0Parser(baos.toByteArray())
+        val map = parser.readAmf0() as? Map<*, *>
+        assertNotNull(map)
+        val keys = map!!.keys.map { it as String }
+        assertEquals(listOf("a", "b"), keys)
+    }
 }
