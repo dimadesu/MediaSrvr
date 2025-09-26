@@ -281,4 +281,62 @@ class Amf0ParserTest {
         assertEquals("y", arr1!![0])
         assertNull(arr1[1])
     }
+
+    @Test
+    fun testNestedEmptyInnerObject() {
+        // Object { "outer": { } }
+        val baos = java.io.ByteArrayOutputStream()
+        baos.write(3) // outer object
+        val kout = "outer".toByteArray(Charsets.UTF_8)
+        baos.write((kout.size shr 8) and 0xff)
+        baos.write(kout.size and 0xff)
+        baos.write(kout)
+        // inner object (empty): marker 3 then immediate end marker
+        baos.write(3)
+        baos.write(0)
+        baos.write(0)
+        baos.write(9)
+        // end outer object
+        baos.write(0)
+        baos.write(0)
+        baos.write(9)
+
+        val parser = Amf0Parser(baos.toByteArray())
+        val map = parser.readAmf0() as? Map<*, *>
+        assertNotNull(map)
+        val inner = map!!["outer"] as? Map<*, *>
+        assertNotNull(inner)
+        assertTrue(inner!!.isEmpty())
+    }
+
+    @Test
+    fun testLongMultiByteStringWithSurroundingValues() {
+        // Build: number(2.2), long-string(multi-byte >65k), number(3.3)
+        val baos = java.io.ByteArrayOutputStream()
+        // number 2.2
+        baos.write(0)
+        baos.write(java.nio.ByteBuffer.allocate(8).putDouble(2.2).array())
+
+        // long string marker
+        baos.write(12)
+        val payload = "к".repeat(40000) // Cyrillic small ka (2 bytes in UTF-8) -> ~80k bytes
+        val pb = payload.toByteArray(Charsets.UTF_8)
+        baos.write(java.nio.ByteBuffer.allocate(4).putInt(pb.size).array())
+        baos.write(pb)
+
+        // trailing number 3.3
+        baos.write(0)
+        baos.write(java.nio.ByteBuffer.allocate(8).putDouble(3.3).array())
+
+        val parser = Amf0Parser(baos.toByteArray())
+        val n1 = parser.readAmf0() as? Double
+        assertNotNull(n1)
+        assertEquals(2.2, n1!!, 0.0001)
+        val s = parser.readAmf0() as? String
+        assertNotNull(s)
+        assertEquals(payload.length, s!!.length)
+        val n2 = parser.readAmf0() as? Double
+        assertNotNull(n2)
+        assertEquals(3.3, n2!!, 0.0001)
+    }
 }
