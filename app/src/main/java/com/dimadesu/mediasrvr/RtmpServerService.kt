@@ -10,6 +10,7 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.*
+import java.util.concurrent.atomic.AtomicInteger
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.net.ServerSocket
@@ -124,7 +125,8 @@ class RtmpServerService : Service() {
 
                     // Keep connection open - for now just sleep and log
                     // Start RTMP session handler
-                    val session = RtmpSession(sock, input, output)
+                    val sessionId = connectionIdCounter.getAndIncrement()
+                    val session = RtmpSession(sessionId, sock, input, output)
                     session.run()
                 } catch (e: Exception) {
                     Log.e(TAG, "Client handler error", e)
@@ -132,6 +134,8 @@ class RtmpServerService : Service() {
             }
         }
     }
+
+    private val connectionIdCounter = AtomicInteger(1)
 
     // Global registry of streams -> publisher session
     private val streams = mutableMapOf<String, RtmpSession>()
@@ -147,6 +151,7 @@ class RtmpServerService : Service() {
     }
 
     inner class RtmpSession(
+        private val sessionId: Int,
         private val socket: Socket,
         private val input: DataInputStream,
         private val output: DataOutputStream
@@ -167,6 +172,8 @@ class RtmpServerService : Service() {
         fun run() {
             serverScope.launch {
                 try {
+                    // register in global state
+                    RtmpServerState.registerSession(RtmpSessionInfo(sessionId, socket.inetAddress.hostAddress, false, null))
                     // chunk reassembly: keep per-cid header state and buffers
                     val headerStates = mutableMapOf<Int, HeaderState>()
                     val inPackets = mutableMapOf<Int, InPacket>()
@@ -317,11 +324,13 @@ class RtmpServerService : Service() {
             // if publishing, remove from streams
             publishStreamName?.let { key ->
                 streams.remove(key)
+                RtmpServerState.unregisterStream(key)
             }
             // remove from any players
             for ((_, s) in streams) {
                 s.players.remove(this)
             }
+            RtmpServerState.unregisterSession(sessionId)
             try { socket.close() } catch (ignored: Exception) {}
         }
 
@@ -422,6 +431,8 @@ class RtmpServerService : Service() {
                         publishStreamName = full
                         isPublishing = true
                         streams[full] = this
+                        RtmpServerState.registerStream(full, sessionId)
+                        RtmpServerState.updateSession(sessionId, true, full)
                         Log.i(TAGS, "Client started publishing: $full")
                         // send onStatus NetStream.Publish.Start to publisher
                         val notif = buildOnStatus("status", "NetStream.Publish.Start", "Publishing")
@@ -436,6 +447,7 @@ class RtmpServerService : Service() {
                         val pub = streams[full]
                         if (pub != null) {
                             pub.players.add(this)
+                            RtmpServerState.updateSession(pub.sessionId, true, pub.publishStreamName)
                             Log.i(TAGS, "Client joined as player for $full")
                             // send onStatus Play.Start
                             val notif = buildOnStatus("status", "NetStream.Play.Start", "Playing")

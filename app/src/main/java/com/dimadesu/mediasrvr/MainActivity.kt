@@ -21,6 +21,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.dimadesu.mediasrvr.ui.theme.MediaSrvrTheme
 
 class MainActivity : ComponentActivity() {
@@ -60,6 +67,39 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
             }) {
                 Text("Stop RTMP Server")
             }
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        StatusPanel()
+    }
+}
+
+@Composable
+fun StatusPanel() {
+    var sessions by remember { mutableStateOf<List<com.dimadesu.mediasrvr.RtmpSessionInfo>>(emptyList()) }
+    var streams by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+
+    // simple polling coroutine to refresh state every second
+    val scope = remember { MainScope() }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        scope.launch {
+            while (true) {
+                val snap = RtmpServerState.snapshot()
+                sessions = snap.first
+                streams = snap.second
+                delay(1000)
+            }
+        }
+    }
+
+    Column {
+        Text("Active sessions: ${sessions.size}")
+        for (s in sessions) {
+            Text("#${s.id} ${s.remote} ${if (s.isPublishing) "(publishing ${s.publishName})" else ""}")
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text("Active streams: ${streams.size}")
+        for ((name, pid) in streams) {
+            Text("$name -> #$pid")
         }
     }
 }
