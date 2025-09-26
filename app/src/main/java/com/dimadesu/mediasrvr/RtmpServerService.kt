@@ -173,11 +173,13 @@ class RtmpServerService : Service() {
             serverScope.launch {
                 try {
                     // register in global state
-                    RtmpServerState.registerSession(RtmpSessionInfo(sessionId, socket.inetAddress.hostAddress, false, null))
+                    val remoteAddr = socket.inetAddress?.hostAddress ?: "unknown"
+                    RtmpServerState.registerSession(RtmpSessionInfo(sessionId, remoteAddr, false, null))
                     // chunk reassembly: keep per-cid header state and buffers
                     val headerStates = mutableMapOf<Int, HeaderState>()
                     val inPackets = mutableMapOf<Int, InPacket>()
 
+                    var sessionBytes: Long = 0L
                     while (!socket.isClosed) {
                         // read basic header
                         val header0 = input.readUnsignedByte()
@@ -281,6 +283,9 @@ class RtmpServerService : Service() {
 
                         // update ack counters
                         pkt.bytesReadSinceStart += got
+                        sessionBytes += got.toLong()
+                        // update session-level bytes transferred in global state
+                        RtmpServerState.updateSessionStats(sessionId, sessionBytes)
                         if (pkt.bytesReadSinceStart - pkt.lastAck >= pkt.ackWindow && pkt.ackWindow > 0) {
                             pkt.lastAck = pkt.bytesReadSinceStart
                             // send acknowledgement
