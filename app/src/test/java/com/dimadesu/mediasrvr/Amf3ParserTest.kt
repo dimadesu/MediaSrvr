@@ -197,4 +197,64 @@ class Amf3ParserTest {
         // outA2 should be same instance as outA
         assertTrue(outA2 === outA)
     }
+
+    @Test
+    fun testExternalizableEncoding() {
+        // Build an externalizable inline trait with type name
+        val out = ByteArrayOutputStream()
+        out.write(0x08)
+        // U29O for inline trait externalizable=true, propCount=0, dynamic=false -> 7
+        writeU29(out, 7)
+        writeAmf3StringInline(out, "MyExt")
+        // no payload for externalizable in this minimal test
+
+        val data = out.toByteArray()
+        val p = Amf3Parser(data, 0)
+        val obj = p.readAmf3() as? Map<*, *>
+        assertNotNull(obj)
+        val ext = obj!!["<externalizable>"] as? String
+        assertTrue(ext?.contains("MyExt") == true)
+    }
+
+    @Test
+    fun testLargeU29Integer() {
+        val out = ByteArrayOutputStream()
+        // encode integer marker and a large 29-bit value near the top: 0x1fffffff
+        out.write(0x04)
+        writeU29(out, 0x1fffffff)
+        val data = out.toByteArray()
+        val p = Amf3Parser(data, 0)
+        val v = p.readAmf3() as Int
+        assertEquals(0x1fffffff, v)
+    }
+
+    @Test
+    fun testTraitRefIndexing() {
+        val out = ByteArrayOutputStream()
+        // object 1 inline trait with prop 'x'
+        out.write(0x08)
+        writeU29(out, 0x13)
+        writeAmf3StringInline(out, "")
+        writeAmf3StringInline(out, "x")
+        writeAmf3Integer(out, 9)
+        // object 2: inline trait different props 'y'
+        out.write(0x08)
+        writeU29(out, 0x13)
+        writeAmf3StringInline(out, "")
+        writeAmf3StringInline(out, "y")
+        writeAmf3Integer(out, 10)
+        // object 3: reuse first trait by trait reference header (traitIdx 0 -> header 1)
+        out.write(0x08)
+        writeU29(out, 1)
+        writeAmf3Integer(out, 11)
+
+        val data = out.toByteArray()
+        val p = Amf3Parser(data, 0)
+        val o1 = p.readAmf3() as Map<*, *>
+        val o2 = p.readAmf3() as Map<*, *>
+        val o3 = p.readAmf3() as Map<*, *>
+        assertEquals(9, o1["x"])
+        assertEquals(10, o2["y"])
+        assertEquals(11, o3["x"])
+    }
 }

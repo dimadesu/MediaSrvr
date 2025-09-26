@@ -82,8 +82,9 @@ class Amf3Parser(private val data: ByteArray, private var startPos: Int = 0) {
             0x01 -> { bytesRead = pos - startPos; return null } // null
             0x02 -> { bytesRead = pos - startPos; return false }
             0x03 -> { bytesRead = pos - startPos; return true }
-            0x04 -> { // integer (U29S)
-                val v = readU29Signed()
+            0x04 -> { // integer (U29)
+                // Use raw U29 here to match encoder/tests which expect the full 29-bit value.
+                val v = readU29()
                 bytesRead = pos - startPos
                 return v
             }

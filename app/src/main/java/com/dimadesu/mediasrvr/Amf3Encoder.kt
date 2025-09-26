@@ -145,8 +145,12 @@ class Amf3Encoder {
         // inline trait: compute u29o as (propCount<<4) | (dynamic?8:0) | (externalizable?4:0) | 3
         val u29o = (propCount shl 4) or (if (dynamic) 8 else 0) or (if (externalizable) 4 else 0) or 3
         writeU29(u29o)
-        // typeName: empty
-        writeAmf3StringInline("")
+        // typeName: if externalizable and map contains type name, write it; otherwise empty
+        val typeName = if (externalizable) {
+            val tn = map["<externalizable>"]
+            if (tn is String) tn else ""
+        } else ""
+        writeAmf3StringInline(typeName)
         // property names
         for (pn in propNames) writeAmf3StringInline(pn)
         // register trait
