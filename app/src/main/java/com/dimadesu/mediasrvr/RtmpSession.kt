@@ -56,6 +56,8 @@ class RtmpSession(
     private var lastMediaTimestampMs: Long = 0L
     private var publishMonitorJob: Job? = null
     private var lastPublishUsedAmf3: Boolean = false
+    private var createdStreamSeen: Boolean = false
+    private var connectMonitorJob: Job? = null
 
     fun run(): Job {
         return serverScope.launch {
@@ -63,6 +65,29 @@ class RtmpSession(
                 // register in global state
                 val remoteAddr = socket.inetAddress?.hostAddress ?: "unknown"
                 RtmpServerState.registerSession(RtmpSessionInfo(sessionId, remoteAddr, false, null))
+                // start a connect monitor: if no createStream/publish within 3s, dump recent inbound for diagnosis
+                connectMonitorJob?.cancel()
+                connectMonitorJob = serverScope.launch {
+                    delay(3_000)
+                    if (!createdStreamSeen) {
+                        Log.i(TAGS, "No createStream/publish observed within 3s for session#$sessionId — dumping recent inbound bytes for diagnosis")
+                        try {
+                            val len = if (recentFull) recentBuf.size else recentPos
+                            val copy = ByteArray(len)
+                            if (recentFull) {
+                                val tail = recentBuf.size - recentPos
+                                System.arraycopy(recentBuf, recentPos, copy, 0, tail)
+                                System.arraycopy(recentBuf, 0, copy, tail, recentPos)
+                            } else {
+                                System.arraycopy(recentBuf, 0, copy, 0, recentPos)
+                            }
+                            val b64 = android.util.Base64.encodeToString(copy, android.util.Base64.NO_WRAP)
+                            Log.i(TAGS, "Connect monitor recent inbound base64(len=${len})=$b64")
+                        } catch (e: Exception) {
+                            Log.i(TAGS, "Error in connect monitor dump: ${e.message}")
+                        }
+                    }
+                }
                 // chunk reassembly: keep per-cid header state and buffers
                 val headerStates = mutableMapOf<Int, HeaderState>()
                 val inPackets = mutableMapOf<Int, InPacket>()
@@ -260,6 +285,7 @@ class RtmpSession(
             Log.i(TAGS, "Error dumping recent inbound bytes: ${e.message}")
         }
         try { publishMonitorJob?.cancel() } catch (_: Exception) {}
+        try { connectMonitorJob?.cancel() } catch (_: Exception) {}
     }
 
     private fun handleMessage(type: Int, streamId: Int, timestamp: Int, payload: ByteArray) {
@@ -449,6 +475,18 @@ class RtmpSession(
                 if (obj != null && obj["app"] is String) {
                     appName = obj["app"] as String
                 }
+                // human-readable AMF summary for connect
+                try {
+                    val tcUrl = obj?.get("tcUrl")
+                    val flashVer = obj?.get("flashVer")
+                    val objectEncoding = obj?.get("objectEncoding")
+                    val audioCodecs = obj?.get("audioCodecs")
+                    val videoCodecs = obj?.get("videoCodecs")
+                    val videoFunction = obj?.get("videoFunction")
+                    val pageUrl = obj?.get("pageUrl")
+                    val swfUrl = obj?.get("swfUrl")
+                    Log.i(TAGS, "Connect summary: app=$appName tcUrl=${tcUrl} flashVer=${flashVer} objectEncoding=${objectEncoding} audioCodecs=${audioCodecs} videoCodecs=${videoCodecs} videoFunction=${videoFunction} pageUrl=${pageUrl} swfUrl=${swfUrl}")
+                } catch (e: Exception) { /* ignore */ }
                 // send _result for connect
                 val trans = transId
                 val resp = if (useAmf3) {
@@ -461,6 +499,7 @@ class RtmpSession(
             }
             "createStream" -> {
                 val transId = amf.readAmf0() as? Double ?: 0.0
+                createdStreamSeen = true
                 // allocate a stream id local to this session
                 lastStreamIdAllocated += 1
                 val streamId = lastStreamIdAllocated
