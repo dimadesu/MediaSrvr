@@ -10,46 +10,67 @@ class Amf3Parser(private val data: ByteArray, private var startPos: Int = 0) {
     var pos = startPos
     var bytesRead = 0
 
+    // Reference tables
+    private val stringRefs = mutableListOf<String>()
+    private val objectRefs = mutableListOf<Any?>()
+    private val traitRefs = mutableListOf<Trait>()
+
+    private data class Trait(
+        val typeName: String,
+        val propNames: List<String>,
+        val externalizable: Boolean,
+        val dynamic: Boolean
+    )
+
     private fun readU29(): Int {
-        // U29 variable length unsigned integer (up to 29 bits)
         var value = 0
         var b: Int
         var i = 0
         do {
+            if (pos >= data.size) throw IndexOutOfBoundsException("readU29 out of range")
             b = data[pos++].toInt() and 0xff
-            i++
-            if (i < 4) {
+            if (i < 3) {
                 value = (value shl 7) or (b and 0x7f)
             } else {
                 value = (value shl 8) or b
                 break
             }
+            i++
         } while ((b and 0x80) != 0)
         return value
     }
 
-    private fun readUInt16(): Int {
-        val v = ((data[pos].toInt() and 0xff) shl 8) or (data[pos + 1].toInt() and 0xff)
-        pos += 2
-        return v
+    private fun readU29Signed(): Int {
+        val raw = readU29()
+        // convert to signed 29-bit
+        return if (raw and 0x10000000 != 0) raw - 0x20000000 else raw
     }
 
     private fun readDouble(): Double {
+        if (pos + 8 > data.size) throw IndexOutOfBoundsException("readDouble out of range")
         val b = data.copyOfRange(pos, pos + 8)
         pos += 8
         return java.nio.ByteBuffer.wrap(b).double
     }
 
-    private fun readString(): String {
+    private fun readAmf3String(): String {
         val header = readU29()
         val isRef = (header and 1) == 0
-        val len = header shr 1
+        val value = header shr 1
         if (isRef) {
-            // reference indexes not supported in this minimal parser
-            return "<amf3-string-ref>"
+            val idx = value
+            if (idx < 0 || idx >= stringRefs.size) return "<str-ref:$idx>"
+            return stringRefs[idx]
         }
+        if (value == 0) {
+            stringRefs.add("")
+            return ""
+        }
+        val len = value
+        if (pos + len > data.size) throw IndexOutOfBoundsException("readString len out of range")
         val s = String(data, pos, len, Charsets.UTF_8)
         pos += len
+        stringRefs.add(s)
         return s
     }
 
@@ -57,12 +78,12 @@ class Amf3Parser(private val data: ByteArray, private var startPos: Int = 0) {
         if (pos >= data.size) return null
         val marker = data[pos++].toInt() and 0xff
         when (marker) {
-            0x00 -> return null // undefined
-            0x01 -> return null // null
-            0x02 -> return false
-            0x03 -> return true
+            0x00 -> { bytesRead = pos - startPos; return null } // undefined
+            0x01 -> { bytesRead = pos - startPos; return null } // null
+            0x02 -> { bytesRead = pos - startPos; return false }
+            0x03 -> { bytesRead = pos - startPos; return true }
             0x04 -> { // integer (U29S)
-                val v = readU29()
+                val v = readU29Signed()
                 bytesRead = pos - startPos
                 return v
             }
@@ -72,56 +93,99 @@ class Amf3Parser(private val data: ByteArray, private var startPos: Int = 0) {
                 return d
             }
             0x06 -> { // string
-                val s = readString()
+                val s = readAmf3String()
                 bytesRead = pos - startPos
                 return s
             }
             0x07 -> { // xml doc - treat as string
-                val s = readString()
+                val s = readAmf3String()
                 bytesRead = pos - startPos
                 return s
             }
-            0x08 -> { // typed object / object
-                // minimal: read trait header and then string keys and values until done
-                val header = readU29()
-                val isRef = (header and 1) == 0
-                if (isRef) {
+            0x08 -> { // object
+                val u29o = readU29()
+                if ((u29o and 1) == 0) {
+                    // object reference
+                    val refIdx = u29o shr 1
+                    val out = if (refIdx in objectRefs.indices) objectRefs[refIdx] else "<obj-ref:$refIdx>"
                     bytesRead = pos - startPos
-                    return "<amf3-object-ref>"
+                    return out
                 }
-                val externalizable = (header and 0x02) != 0
-                val dynamic = (header and 0x08) != 0
-                val propCount = header shr 4
-                val typeName = readString()
-                val map = mutableMapOf<String, Any?>()
+                var u = u29o shr 1
+                // trait reference?
+                if ((u and 1) == 0) {
+                    val traitRefIdx = u shr 1
+                    val trait = if (traitRefIdx in traitRefs.indices) traitRefs[traitRefIdx] else null
+                    // create object placeholder and add to refs before populating (to allow circular refs)
+                    val obj = mutableMapOf<String, Any?>()
+                    objectRefs.add(obj)
+                    if (trait != null) {
+                        // sealed properties
+                        for (prop in trait.propNames) {
+                            val value = readAmf3()
+                            obj[prop] = value
+                        }
+                        if (trait.dynamic) {
+                            while (true) {
+                                val key = readAmf3String()
+                                if (key.isEmpty()) break
+                                val v = readAmf3()
+                                obj[key] = v
+                            }
+                        }
+                    }
+                    bytesRead = pos - startPos
+                    return obj
+                }
+                // inline traits
+                u = u shr 1
+                val externalizable = (u and 1) != 0
+                val dynamic = (u and 2) != 0
+                val propCount = u shr 2
+                val typeName = readAmf3String()
+                val propNames = mutableListOf<String>()
                 for (i in 0 until propCount) {
-                    val key = readString()
-                    val value = readAmf3()
-                    map[key] = value
+                    propNames.add(readAmf3String())
                 }
-                if (dynamic) {
+                val trait = Trait(typeName, propNames.toList(), externalizable, dynamic)
+                traitRefs.add(trait)
+                // create object placeholder and add to refs before reading values
+                val obj = mutableMapOf<String, Any?>()
+                objectRefs.add(obj)
+                if (externalizable) {
+                    // cannot parse externalizable here; read as placeholder
+                    obj["<externalizable>"] = "<externalizable:${trait.typeName}>"
+                    bytesRead = pos - startPos
+                    return obj
+                }
+                // sealed properties
+                for (prop in trait.propNames) {
+                    val v = readAmf3()
+                    obj[prop] = v
+                }
+                if (trait.dynamic) {
                     while (true) {
-                        val key = readString()
+                        val key = readAmf3String()
                         if (key.isEmpty()) break
-                        val value = readAmf3()
-                        map[key] = value
+                        val v = readAmf3()
+                        obj[key] = v
                     }
                 }
                 bytesRead = pos - startPos
-                return map
+                return obj
             }
             0x09 -> { // array
                 val header = readU29()
-                val isRef = (header and 1) == 0
-                if (isRef) {
+                if ((header and 1) == 0) {
+                    val refIdx = header shr 1
+                    val out = if (refIdx in objectRefs.indices) objectRefs[refIdx] else listOf("<arr-ref:$refIdx>")
                     bytesRead = pos - startPos
-                    return listOf<Any?>("<amf3-array-ref>")
+                    return out
                 }
                 val denseCount = header shr 1
                 val assoc = mutableMapOf<String, Any?>()
-                // associative part
                 while (true) {
-                    val key = readString()
+                    val key = readAmf3String()
                     if (key.isEmpty()) break
                     val v = readAmf3()
                     assoc[key] = v
@@ -130,15 +194,16 @@ class Amf3Parser(private val data: ByteArray, private var startPos: Int = 0) {
                 for (i in 0 until denseCount) {
                     list.add(readAmf3())
                 }
-                // merge associative into list? Return as pair-like structure
+                // store in object refs
                 val out = mutableMapOf<String, Any?>()
                 out["assoc"] = assoc
                 out["dense"] = list
+                objectRefs.add(out)
                 bytesRead = pos - startPos
                 return out
             }
             else -> {
-                // Unknown/unsupported marker - return a hex preview of next bytes
+                // Unknown marker
                 val remain = data.copyOfRange(pos, kotlin.math.min(data.size, pos + 64))
                 bytesRead = pos - startPos
                 return "<amf3-unknown:$marker:${remain.joinToString(",") { "%02x".format(it) }}>"
