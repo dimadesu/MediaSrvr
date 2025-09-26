@@ -112,12 +112,387 @@ class RtmpServerService : Service() {
                     Log.i(TAG, "Received C2 from client. Handshake complete.")
 
                     // Keep connection open - for now just sleep and log
-                    while (!sock.isClosed) {
-                        delay(1000)
-                    }
+                    // Start RTMP session handler
+                    val session = RtmpSession(sock, input, output)
+                    session.run()
                 } catch (e: Exception) {
                     Log.e(TAG, "Client handler error", e)
                 }
+            }
+        }
+    }
+
+    // Global registry of streams -> publisher session
+    private val streams = mutableMapOf<String, RtmpSession>()
+
+    inner class RtmpSession(
+        private val socket: Socket,
+        private val input: DataInputStream,
+        private val output: DataOutputStream
+    ) {
+        private val TAGS = "RtmpSession"
+        private var inChunkSize = 128
+        private var outChunkSize = 128
+        private var streamIdCounter = 1
+
+        var appName: String = ""
+        var publishStreamName: String? = null
+        var isPublishing = false
+        var publishStreamKey: String? = null
+
+        // players subscribed to a stream name -> list of sessions
+        private val players = mutableSetOf<RtmpSession>()
+
+        fun run() {
+            serverScope.launch {
+                try {
+                    // simple loop: read RTMP messages and handle
+                    while (!socket.isClosed) {
+                        val header0 = input.readUnsignedByte()
+                        val fmt = header0 shr 6
+                        var cid = header0 and 0x3f
+                        if (cid == 0) {
+                            // 2-byte header
+                            val b = input.readUnsignedByte()
+                            cid = 64 + b
+                        } else if (cid == 1) {
+                            val b1 = input.readUnsignedByte()
+                            val b2 = input.readUnsignedByte()
+                            cid = 64 + b1 + (b2 shl 8)
+                        }
+
+                        val headerLen = when (fmt) {
+                            0 -> 11
+                            1 -> 7
+                            2 -> 3
+                            else -> 0
+                        }
+
+                        val headerBuf = ByteArray(headerLen)
+                        if (headerLen > 0) input.readFully(headerBuf)
+
+                        var timestamp = 0
+                        var msgLength = 0
+                        var msgType = 0
+                        var msgStreamId = 0
+
+                        var offset = 0
+                        if (fmt <= 2) {
+                            timestamp = ((headerBuf[offset].toInt() and 0xff) shl 16) or
+                                    ((headerBuf[offset + 1].toInt() and 0xff) shl 8) or
+                                    (headerBuf[offset + 2].toInt() and 0xff)
+                            offset += 3
+                        }
+                        if (fmt <= 1) {
+                            msgLength = ((headerBuf[offset].toInt() and 0xff) shl 16) or
+                                    ((headerBuf[offset + 1].toInt() and 0xff) shl 8) or
+                                    (headerBuf[offset + 2].toInt() and 0xff)
+                            msgType = headerBuf[offset + 3].toInt() and 0xff
+                            offset += 4
+                        }
+                        if (fmt == 0) {
+                            // little-endian stream id
+                            msgStreamId = (headerBuf[offset].toInt() and 0xff) or
+                                    ((headerBuf[offset + 1].toInt() and 0xff) shl 8) or
+                                    ((headerBuf[offset + 2].toInt() and 0xff) shl 16) or
+                                    ((headerBuf[offset + 3].toInt() and 0xff) shl 24)
+                        }
+
+                        // extended timestamp
+                        if (timestamp == 0xffffff) {
+                            timestamp = input.readInt()
+                        }
+
+                        // read payload fully (simple implementation: read msgLength bytes)
+                        val payload = ByteArray(msgLength)
+                        var got = 0
+                        while (got < msgLength) {
+                            val r = input.read(payload, got, msgLength - got)
+                            if (r <= 0) throw java.io.EOFException("Unexpected EOF while reading payload")
+                            got += r
+                        }
+
+                        handleMessage(msgType, msgStreamId, timestamp, payload)
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAGS, "session error", e)
+                } finally {
+                    cleanup()
+                }
+            }
+        }
+
+        private fun cleanup() {
+            // if publishing, remove from streams
+            publishStreamName?.let { key ->
+                streams.remove(key)
+            }
+            // remove from any players
+            for ((_, s) in streams) {
+                s.players.remove(this)
+            }
+            try { socket.close() } catch (ignored: Exception) {}
+        }
+
+        private fun handleMessage(type: Int, streamId: Int, timestamp: Int, payload: ByteArray) {
+            when (type) {
+                1 -> { // set chunk size
+                    if (payload.size >= 4) {
+                        val size = ((payload[0].toInt() and 0xff) shl 24) or
+                                ((payload[1].toInt() and 0xff) shl 16) or
+                                ((payload[2].toInt() and 0xff) shl 8) or
+                                (payload[3].toInt() and 0xff)
+                        inChunkSize = size
+                        Log.i(TAGS, "Set inChunkSize=$inChunkSize")
+                    }
+                }
+                3 -> { // acknowledgement
+                    // ignore
+                }
+                5 -> { // window acknowledgement size
+                    // server should send ACK, but ignore for now
+                }
+                6 -> { // set peer bandwidth
+                    // ignore
+                }
+                4 -> { // user control event
+                    // ignore
+                }
+                8, 9 -> { // audio(8) or video(9)
+                    // forward to players if this session is publisher
+                    if (isPublishing && publishStreamName != null) {
+                        forwardToPlayers(type, timestamp, payload)
+                    }
+                }
+                20, 17 -> { // invoke (AMF0/AMF3) - type 20 is AMF0 invoke
+                    val amf = Amf0Parser(payload)
+                    val cmd = amf.readAmf0()
+                    if (cmd is String) {
+                        handleCommand(cmd, amf)
+                    }
+                }
+                else -> {
+                    Log.d(TAGS, "Unhandled msg type=$type len=${payload.size}")
+                }
+            }
+        }
+
+        private fun handleCommand(cmd: String, amf: Amf0Parser) {
+            when (cmd) {
+                "connect" -> {
+                    val transId = amf.readAmf0() as? Double ?: 0.0
+                    val obj = amf.readAmf0() as? Map<*, *>
+                    if (obj != null && obj["app"] is String) {
+                        appName = obj["app"] as String
+                    }
+                    // send _result for connect
+                    val trans = transId
+                    val resp = buildConnectResult(trans)
+                    sendRtmpMessage(20, 0, resp)
+                    Log.i(TAGS, "Handled connect, app=$appName")
+                }
+                "createStream" -> {
+                    val transId = amf.readAmf0() as? Double ?: 0.0
+                    val streamId = 1
+                    val resp = buildCreateStreamResult(transId, streamId)
+                    sendRtmpMessage(20, 0, resp)
+                }
+                "publish" -> {
+                    // publish(streamName)
+                    val transIdObj = amf.readAmf0()
+                    val name = amf.readAmf0() as? String
+                    if (name != null) {
+                        val full = "/$appName/$name"
+                        publishStreamName = full
+                        isPublishing = true
+                        streams[full] = this
+                        Log.i(TAGS, "Client started publishing: $full")
+                        // send onStatus NetStream.Publish.Start to publisher
+                        val notif = buildOnStatus("status", "NetStream.Publish.Start", "Publishing")
+                        sendRtmpMessage(18, 1, notif) // data message
+                    }
+                }
+                "play" -> {
+                    val transIdObj = amf.readAmf0()
+                    val name = amf.readAmf0() as? String
+                    if (name != null) {
+                        val full = "/$appName/$name"
+                        val pub = streams[full]
+                        if (pub != null) {
+                            pub.players.add(this)
+                            Log.i(TAGS, "Client joined as player for $full")
+                            // send onStatus Play.Start
+                            val notif = buildOnStatus("status", "NetStream.Play.Start", "Playing")
+                            sendRtmpMessage(18, 1, notif)
+                        } else {
+                            Log.i(TAGS, "No publisher for $full")
+                        }
+                    }
+                }
+                else -> {
+                    Log.i(TAGS, "Unhandled command: $cmd")
+                }
+            }
+        }
+
+        private fun forwardToPlayers(type: Int, timestamp: Int, payload: ByteArray) {
+            val list = players.toList() // snapshot
+            for (p in list) {
+                try {
+                    p.sendRtmpMessage(type, p.publishStreamName?.let { 1 } ?: 1, payload, timestamp)
+                } catch (e: Exception) {
+                    Log.e(TAGS, "Error forwarding to player", e)
+                }
+            }
+        }
+
+        private fun sendRtmpMessage(type: Int, streamId: Int, payload: ByteArray, timestamp: Int = 0) {
+            // build basic header fmt=0, cid 5 for video, 4 for audio, 3 for data
+            val cid = when (type) {
+                8 -> 4
+                9 -> 5
+                else -> 6
+            }
+            val fmt = 0
+            val basic = ((fmt shl 6) or (cid and 0x3f)).toByte()
+            val msgHeader = ByteArray(11)
+            // timestamp 3 bytes
+            msgHeader[0] = ((timestamp shr 16) and 0xff).toByte()
+            msgHeader[1] = ((timestamp shr 8) and 0xff).toByte()
+            msgHeader[2] = (timestamp and 0xff).toByte()
+            // msg length 3 bytes
+            msgHeader[3] = ((payload.size shr 16) and 0xff).toByte()
+            msgHeader[4] = ((payload.size shr 8) and 0xff).toByte()
+            msgHeader[5] = (payload.size and 0xff).toByte()
+            // type
+            msgHeader[6] = (type and 0xff).toByte()
+            // stream id little-endian
+            msgHeader[7] = (streamId and 0xff).toByte()
+            msgHeader[8] = ((streamId shr 8) and 0xff).toByte()
+            msgHeader[9] = ((streamId shr 16) and 0xff).toByte()
+            msgHeader[10] = ((streamId shr 24) and 0xff).toByte()
+
+            synchronized(output) {
+                output.writeByte(basic.toInt())
+                output.write(msgHeader)
+                output.write(payload)
+                output.flush()
+            }
+        }
+
+        // build AMF0 encoded responses
+        private fun buildStringAmf(name: String): ByteArray {
+            val bs = name.toByteArray(Charsets.UTF_8)
+            val out = ByteArray(3 + bs.size)
+            out[0] = 2 // string marker
+            out[1] = ((bs.size shr 8) and 0xff).toByte()
+            out[2] = (bs.size and 0xff).toByte()
+            System.arraycopy(bs, 0, out, 3, bs.size)
+            return out
+        }
+
+        private fun buildNumberAmf(v: Double): ByteArray {
+            val out = ByteArray(9)
+            out[0] = 0
+            val bb = java.nio.ByteBuffer.allocate(8).putDouble(v).array()
+            System.arraycopy(bb, 0, out, 1, 8)
+            return out
+        }
+
+        private fun buildObjectAmf(map: Map<String, Any>): ByteArray {
+            val baos = java.io.ByteArrayOutputStream()
+            baos.write(3) // object marker
+            for ((k, v) in map) {
+                val keyb = k.toByteArray(Charsets.UTF_8)
+                baos.write((keyb.size shr 8) and 0xff)
+                baos.write(keyb.size and 0xff)
+                baos.write(keyb)
+                when (v) {
+                    is String -> baos.write(buildStringAmf(v))
+                    is Double -> baos.write(buildNumberAmf(v))
+                    is Int -> baos.write(buildNumberAmf(v.toDouble()))
+                    is Boolean -> baos.write(if (v) byteArrayOf(1, 1) else byteArrayOf(1, 0))
+                    else -> baos.write(5) // null
+                }
+            }
+            // object end marker
+            baos.write(0)
+            baos.write(0)
+            baos.write(9)
+            return baos.toByteArray()
+        }
+
+        private fun buildConnectResult(transId: Double): ByteArray {
+            val baos = java.io.ByteArrayOutputStream()
+            baos.write(buildStringAmf("_result"))
+            baos.write(buildNumberAmf(transId))
+            val props = mapOf("fmsVer" to "FMS/3,5,7,7009", "capabilities" to 31)
+            baos.write(buildObjectAmf(props))
+            val info = mapOf("level" to "status", "code" to "NetConnection.Connect.Success", "description" to "Connection succeeded.")
+            baos.write(buildObjectAmf(info))
+            return baos.toByteArray()
+        }
+
+        private fun buildCreateStreamResult(transId: Double, streamId: Int): ByteArray {
+            val baos = java.io.ByteArrayOutputStream()
+            baos.write(buildStringAmf("_result"))
+            baos.write(buildNumberAmf(transId))
+            baos.write(5) // null
+            baos.write(buildNumberAmf(streamId.toDouble()))
+            return baos.toByteArray()
+        }
+
+        private fun buildOnStatus(level: String, code: String, desc: String): ByteArray {
+            val baos = java.io.ByteArrayOutputStream()
+            baos.write(buildStringAmf("onStatus"))
+            baos.write(buildNumberAmf(0.0))
+            baos.write(5) // null
+            val info = mapOf("level" to level, "code" to code, "description" to desc)
+            baos.write(buildObjectAmf(info))
+            return baos.toByteArray()
+        }
+    }
+
+    // Minimal AMF0 parser used for the subset of messages we need
+    class Amf0Parser(private val data: ByteArray) {
+        private var pos = 0
+
+        fun readAmf0(): Any? {
+            if (pos >= data.size) return null
+            val marker = data[pos++].toInt() and 0xff
+            return when (marker) {
+                0 -> { // number
+                    val b = data.copyOfRange(pos, pos + 8)
+                    pos += 8
+                    java.nio.ByteBuffer.wrap(b).double
+                }
+                1 -> { // boolean
+                    val v = data[pos++].toInt() != 0
+                    v
+                }
+                2 -> { // string
+                    val len = ((data[pos++].toInt() and 0xff) shl 8) or (data[pos++].toInt() and 0xff)
+                    val s = String(data, pos, len, Charsets.UTF_8)
+                    pos += len
+                    s
+                }
+                3 -> { // object
+                    val map = mutableMapOf<String, Any?>()
+                    while (true) {
+                        val keyLen = ((data[pos++].toInt() and 0xff) shl 8) or (data[pos++].toInt() and 0xff)
+                        if (keyLen == 0) {
+                            val end = data[pos++].toInt() and 0xff
+                            if (end == 9) break
+                        }
+                        val key = String(data, pos, keyLen, Charsets.UTF_8)
+                        pos += keyLen
+                        val v = readAmf0()
+                        map[key] = v
+                    }
+                    map
+                }
+                5 -> null
+                else -> null
             }
         }
     }
