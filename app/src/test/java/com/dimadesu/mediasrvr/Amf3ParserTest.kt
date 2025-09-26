@@ -138,4 +138,63 @@ class Amf3ParserTest {
         assertNotNull(obj)
         assertTrue(obj!!.containsKey("<externalizable>"))
     }
+
+    @Test
+    fun testTraitRefs() {
+        // Build two objects with same trait (same props) and ensure trait refs are used by parser
+        val out = ByteArrayOutputStream()
+        // object 1
+        out.write(0x08)
+        writeU29(out, 0x13) // inline trait propCount=1
+        writeAmf3StringInline(out, "")
+        writeAmf3StringInline(out, "a")
+        writeAmf3Integer(out, 1)
+        // object 2 uses trait ref (we simulate: write object marker then trait ref header)
+        out.write(0x08)
+        // trait ref: (traitIndex<<2)|1 -> trait index 0 -> header 1
+        writeU29(out, 1)
+        // value for sealed prop 'a'
+        writeAmf3Integer(out, 2)
+
+        val data = out.toByteArray()
+        val p = Amf3Parser(data, 0)
+        val o1 = p.readAmf3() as? Map<*, *>
+        val o2 = p.readAmf3() as? Map<*, *>
+        assertNotNull(o1)
+        assertNotNull(o2)
+        assertEquals(1, o1!!["a"])
+        assertEquals(2, o2!!["a"])
+    }
+
+    @Test
+    fun testStringRefsEncodeDecode() {
+        val enc = Amf3Encoder()
+        enc.writeValue("dup")
+        enc.writeValue("dup")
+        val data = enc.toByteArray()
+        val p = Amf3Parser(data, 0)
+        val s1 = p.readAmf3() as String
+        val s2 = p.readAmf3() as String
+        assertEquals("dup", s1)
+        assertEquals("dup", s2)
+    }
+
+    @Test
+    fun testNestedCircularGraphIdentity() {
+        val enc = Amf3Encoder()
+        val a = mutableMapOf<String, Any?>()
+        val b = mutableMapOf<String, Any?>()
+        a["b"] = b
+        b["a"] = a
+        enc.writeValue(a)
+        val data = enc.toByteArray()
+        val p = Amf3Parser(data, 0)
+        val outA = p.readAmf3() as? Map<*, *>
+        assertNotNull(outA)
+        val outB = outA!!["b"] as? Map<*, *>
+        assertNotNull(outB)
+        val outA2 = outB!!["a"]
+        // outA2 should be same instance as outA
+        assertTrue(outA2 === outA)
+    }
 }

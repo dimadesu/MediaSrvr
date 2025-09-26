@@ -34,7 +34,14 @@ class Amf3Encoder {
         }
     }
 
-    private fun writeAmf3StringInline(s: String) {
+    private fun writeAmf3StringInline(s: String, allowRef: Boolean = true) {
+        // If string already seen and references allowed, emit a string reference (index<<1)
+        val existing = stringRefs.indexOf(s)
+        if (allowRef && existing >= 0) {
+            val refHeader = (existing shl 1)
+            writeU29(refHeader)
+            return
+        }
         // header: (len<<1)|1 ; if empty, still write header 1 (len 0) and add empty to refs
         val b = s.toByteArray(Charsets.UTF_8)
         val header = (b.size shl 1) or 1
