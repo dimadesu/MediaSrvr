@@ -16,6 +16,8 @@ class RtmpSession(
     private val waitingPlayers: MutableMap<String, MutableList<RtmpSession>>
 ) {
     private val TAGS = "RtmpSession"
+    // set to true temporarily to emit full payload base64 dumps for AV/data messages
+    private val debugDumpPayloads = false
     private var inChunkSize = 128
     private var outChunkSize = 128
     private var streamIdCounter = 1
@@ -275,6 +277,12 @@ class RtmpSession(
                 try {
                     val preview = payload.take(32).joinToString(" ") { String.format("%02x", it) }
                     Log.i(TAGS, "Received av type=$type ts=$timestamp len=${payload.size} isPublishing=$isPublishing publishName=$publishStreamName preview=$preview")
+                    if (debugDumpPayloads) {
+                        try {
+                            val b64 = android.util.Base64.encodeToString(payload, android.util.Base64.NO_WRAP)
+                            Log.i(TAGS, "AV payload base64(len=${payload.size})=$b64")
+                        } catch (e: Exception) { /* ignore */ }
+                    }
                 } catch (e: Exception) { /* ignore */ }
 
                 // forward to players if this session is publisher
@@ -317,6 +325,12 @@ class RtmpSession(
                         metaData = payload.copyOf()
                         val preview = metaData?.take(128)?.joinToString(" ") { String.format("%02x", it) }
                         Log.i(TAGS, "Cached metadata from publisher=${publishStreamName} name=$name len=${metaData?.size} preview=${preview}")
+                            if (debugDumpPayloads) {
+                                try {
+                                    val b64 = android.util.Base64.encodeToString(metaData, android.util.Base64.NO_WRAP)
+                                    Log.i(TAGS, "Metadata payload base64(len=${metaData?.size})=$b64")
+                                } catch (e: Exception) { /* ignore */ }
+                            }
                     } else {
                         Log.i(TAGS, "Data message received name=$name len=${payload.size} preview=${payload.take(64).joinToString(" ") { String.format("%02x", it) }}")
                     }
