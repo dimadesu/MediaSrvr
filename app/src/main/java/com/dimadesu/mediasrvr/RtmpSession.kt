@@ -36,6 +36,11 @@ class RtmpSession(
     var avcSequenceHeader: ByteArray? = null
     var metaData: ByteArray? = null
 
+    // recent inbound bytes (ring buffer) for post-mortem debugging
+    private val recentBuf = ByteArray(8 * 1024)
+    private var recentPos = 0
+    private var recentFull = false
+
     var appName: String = ""
     var publishStreamName: String? = null
     var isPublishing = false
@@ -155,8 +160,20 @@ class RtmpSession(
                     val toRead = minOf(inChunkSize - (pkt.received % inChunkSize), msgLength - pkt.received)
                     var got = 0
                     while (got < toRead) {
+                        val beforeGot = got
                         val r = input.read(pkt.buffer, pkt.received + got, toRead - got)
                         if (r <= 0) throw java.io.EOFException("Unexpected EOF while reading chunk payload")
+                        // copy the newly read bytes into recentBuf
+                        try {
+                            val start = pkt.received + beforeGot
+                            var copied = 0
+                            while (copied < r) {
+                                recentBuf[recentPos] = pkt.buffer[start + copied]
+                                recentPos += 1
+                                if (recentPos >= recentBuf.size) { recentPos = 0; recentFull = true }
+                                copied += 1
+                            }
+                        } catch (e: Exception) { /* ignore */ }
                         got += r
                     }
                     pkt.received += got
@@ -215,6 +232,25 @@ class RtmpSession(
         }
         RtmpServerState.unregisterSession(sessionId)
         try { socket.close() } catch (ignored: Exception) {}
+        // emit recent inbound bytes for debugging
+        try {
+            val len = if (recentFull) recentBuf.size else recentPos
+            if (len > 0) {
+                val copy = ByteArray(len)
+                if (recentFull) {
+                    // copy from recentPos..end then 0..recentPos-1
+                    val tail = recentBuf.size - recentPos
+                    System.arraycopy(recentBuf, recentPos, copy, 0, tail)
+                    System.arraycopy(recentBuf, 0, copy, tail, recentPos)
+                } else {
+                    System.arraycopy(recentBuf, 0, copy, 0, recentPos)
+                }
+                val b64 = android.util.Base64.encodeToString(copy, android.util.Base64.NO_WRAP)
+                Log.i(TAGS, "Recent inbound bytes base64(len=${len})=$b64")
+            }
+        } catch (e: Exception) {
+            Log.i(TAGS, "Error dumping recent inbound bytes: ${e.message}")
+        }
     }
 
     private fun handleMessage(type: Int, streamId: Int, timestamp: Int, payload: ByteArray) {
