@@ -83,8 +83,12 @@ object RtmpServerState {
         emitJob?.cancel()
         emitJob = emitScope.launch {
             kotlinx.coroutines.delay(throttleMillis)
-            _sessionsFlow.value = synchronized(this@RtmpServerState) { sessions.values.toList() }
-            _streamsFlow.value = synchronized(this@RtmpServerState) { streams.toMap() }
+            val sess = synchronized(this@RtmpServerState) { sessions.values.toList() }
+            val strs = synchronized(this@RtmpServerState) { streams.toMap() }
+            // debug log to help trace updates
+            android.util.Log.i("RtmpServerState", "Emitting sessions=${sess.size} streams=${strs.size}")
+            _sessionsFlow.value = sess
+            _streamsFlow.value = strs
         }
     }
 

@@ -124,10 +124,12 @@ class RtmpServerService : Service() {
                     Log.i(TAG, "Received C2 from client. Handshake complete.")
 
                     // Keep connection open - for now just sleep and log
-                    // Start RTMP session handler
+                    // Start RTMP session handler and wait until it finishes before closing socket
                     val sessionId = connectionIdCounter.getAndIncrement()
                     val session = RtmpSession(sessionId, sock, input, output)
-                    session.run()
+                    val job = session.run()
+                    // wait for the session to complete (suspends here)
+                    job.join()
                 } catch (e: Exception) {
                     Log.e(TAG, "Client handler error", e)
                 }
@@ -169,8 +171,8 @@ class RtmpServerService : Service() {
         // players subscribed to a stream name -> list of sessions
         private val players = mutableSetOf<RtmpSession>()
 
-        fun run() {
-            serverScope.launch {
+        fun run(): Job {
+            return serverScope.launch {
                 try {
                     // register in global state
                     val remoteAddr = socket.inetAddress?.hostAddress ?: "unknown"
@@ -438,7 +440,7 @@ class RtmpServerService : Service() {
                         streams[full] = this
                         RtmpServerState.registerStream(full, sessionId)
                         RtmpServerState.updateSession(sessionId, true, full)
-                        Log.i(TAGS, "Client started publishing: $full")
+                        Log.i(TAGS, "[session#$sessionId] Client started publishing: $full")
                         // send onStatus NetStream.Publish.Start to publisher
                         val notif = buildOnStatus("status", "NetStream.Publish.Start", "Publishing")
                         sendRtmpMessage(18, 1, notif) // data message
@@ -453,7 +455,7 @@ class RtmpServerService : Service() {
                         if (pub != null) {
                             pub.players.add(this)
                             RtmpServerState.updateSession(pub.sessionId, true, pub.publishStreamName)
-                            Log.i(TAGS, "Client joined as player for $full")
+                            Log.i(TAGS, "[session#$sessionId] Client joined as player for $full (publisher=#${pub.sessionId})")
                             // send onStatus Play.Start
                             val notif = buildOnStatus("status", "NetStream.Play.Start", "Playing")
                             sendRtmpMessage(18, 1, notif)
