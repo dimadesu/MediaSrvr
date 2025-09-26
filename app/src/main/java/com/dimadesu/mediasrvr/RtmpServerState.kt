@@ -1,7 +1,12 @@
 package com.dimadesu.mediasrvr
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 data class RtmpSessionInfo(
     val id: Int,
@@ -22,10 +27,16 @@ object RtmpServerState {
     private val _streamsFlow = MutableStateFlow<Map<String, Int>>(emptyMap())
     val streamsFlow: StateFlow<Map<String, Int>> = _streamsFlow
 
+    // Debounce emissions to at most once per throttleMillis to avoid UI churn under heavy load
+    private const val throttleMillis = 200L
+    private val emitScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+    @Volatile
+    private var emitJob: kotlinx.coroutines.Job? = null
+
     @Synchronized
     fun registerSession(info: RtmpSessionInfo) {
         sessions[info.id] = info
-        emit()
+        scheduleEmit()
     }
 
     @Synchronized
@@ -33,7 +44,7 @@ object RtmpServerState {
         val prev = sessions[id]
         if (prev != null) {
             sessions[id] = prev.copy(isPublishing = isPublishing, publishName = publishName)
-            emit()
+            scheduleEmit()
         }
     }
 
@@ -42,7 +53,7 @@ object RtmpServerState {
         val prev = sessions[id]
         if (prev != null) {
             sessions[id] = prev.copy(bytesTransferred = bytesTransferred)
-            emit()
+            scheduleEmit()
         }
     }
 
@@ -52,24 +63,29 @@ object RtmpServerState {
         // remove any streams published by this session
         val toRemove = streams.filterValues { it == id }.keys.toList()
         for (k in toRemove) streams.remove(k)
-        emit()
+        scheduleEmit()
     }
 
     @Synchronized
     fun registerStream(name: String, publisherId: Int) {
         streams[name] = publisherId
-        emit()
+        scheduleEmit()
     }
 
     @Synchronized
     fun unregisterStream(name: String) {
         streams.remove(name)
-        emit()
+        scheduleEmit()
     }
 
-    private fun emit() {
-        _sessionsFlow.value = sessions.values.toList()
-        _streamsFlow.value = streams.toMap()
+    private fun scheduleEmit() {
+        // cancel previous scheduled emit and schedule a new one after throttleMillis
+        emitJob?.cancel()
+        emitJob = emitScope.launch {
+            kotlinx.coroutines.delay(throttleMillis)
+            _sessionsFlow.value = synchronized(this@RtmpServerState) { sessions.values.toList() }
+            _streamsFlow.value = synchronized(this@RtmpServerState) { streams.toMap() }
+        }
     }
 
     @Synchronized

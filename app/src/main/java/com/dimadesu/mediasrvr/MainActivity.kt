@@ -78,6 +78,8 @@ fun StatusPanel() {
     val streams by RtmpServerState.streamsFlow.collectAsState()
 
     Column {
+        SummaryPanel(sessions, streams)
+        Spacer(modifier = Modifier.height(8.dp))
         Text("Active sessions: ${sessions.size}")
         for (s in sessions) {
             val uptimeSec = ((System.currentTimeMillis() - s.connectedAt) / 1000)
@@ -88,6 +90,18 @@ fun StatusPanel() {
         for ((name, pid) in streams) {
             Text("$name -> #$pid")
         }
+    }
+}
+
+@Composable
+fun SummaryPanel(sessions: List<com.dimadesu.mediasrvr.RtmpSessionInfo>, streams: Map<String, Int>) {
+    val totalBytes = sessions.sumOf { it.bytesTransferred }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Connections: ${sessions.size}")
+        Spacer(modifier = Modifier.width(12.dp))
+        Text("Streams: ${streams.size}")
+        Spacer(modifier = Modifier.width(12.dp))
+        Text("Bytes: $totalBytes")
     }
 }
 
