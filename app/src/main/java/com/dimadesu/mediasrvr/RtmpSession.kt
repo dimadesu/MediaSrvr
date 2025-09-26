@@ -424,7 +424,9 @@ class RtmpSession(
                         RtmpServerState.recordAmf3Usage(sessionId)
                         buildOnStatusAmf3("status", "NetStream.Publish.Start", "Publishing")
                     } else buildOnStatus("status", "NetStream.Publish.Start", "Publishing")
-                    sendRtmpMessage(18, 1, notif) // data message
+                    // send onStatus back on the publisher's message stream id (msgStreamId)
+                    val pubStream = if (publishStreamId != 0) publishStreamId else 1
+                    sendRtmpMessage(18, pubStream, notif) // data message
                     // attach any waiting players who tried to play before the publisher existed
                     val queued = waitingPlayers.remove(full)
                     if (queued != null) {
