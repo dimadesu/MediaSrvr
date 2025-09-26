@@ -158,10 +158,22 @@ class RtmpServerService : Service() {
         private val input: DataInputStream,
         private val output: DataOutputStream
     ) {
-        private val TAGS = "RtmpSession"
-        private var inChunkSize = 128
-        private var outChunkSize = 128
-        private var streamIdCounter = 1
+    private val TAGS = "RtmpSession"
+    private var inChunkSize = 128
+    private var outChunkSize = 128
+    private var streamIdCounter = 1
+    private var lastStreamIdAllocated = 0
+
+    var publishStreamId: Int = 0
+    var playStreamId: Int = 0
+        // ACK/window tracking
+        private var ackWindowSize: Int = 0
+        private var inBytesSinceStart: Long = 0L
+        private var lastAckSent: Long = 0L
+
+        // cached sequence headers
+        private var aacSequenceHeader: ByteArray? = null
+        private var avcSequenceHeader: ByteArray? = null
 
         var appName: String = ""
         var publishStreamName: String? = null
@@ -283,16 +295,16 @@ class RtmpServerService : Service() {
                         }
                         pkt.received += got
 
-                        // update ack counters
-                        pkt.bytesReadSinceStart += got
+                        // update ack counters (session-level)
+                        inBytesSinceStart += got.toLong()
                         sessionBytes += got.toLong()
                         // update session-level bytes transferred in global state
                         RtmpServerState.updateSessionStats(sessionId, sessionBytes)
-                        if (pkt.bytesReadSinceStart - pkt.lastAck >= pkt.ackWindow && pkt.ackWindow > 0) {
-                            pkt.lastAck = pkt.bytesReadSinceStart
-                            // send acknowledgement
+                        if (ackWindowSize > 0 && inBytesSinceStart - lastAckSent >= ackWindowSize) {
+                            lastAckSent = inBytesSinceStart
+                            // send acknowledgement (type 3)
                             val ackBuf = ByteArray(4)
-                            val v = pkt.bytesReadSinceStart
+                            val v = lastAckSent.toInt()
                             ackBuf[0] = ((v shr 24) and 0xff).toByte()
                             ackBuf[1] = ((v shr 16) and 0xff).toByte()
                             ackBuf[2] = ((v shr 8) and 0xff).toByte()
@@ -357,7 +369,14 @@ class RtmpServerService : Service() {
                     // ignore
                 }
                 5 -> { // window acknowledgement size
-                    // server should send ACK, but ignore for now
+                    if (payload.size >= 4) {
+                        val size = ((payload[0].toInt() and 0xff) shl 24) or
+                                ((payload[1].toInt() and 0xff) shl 16) or
+                                ((payload[2].toInt() and 0xff) shl 8) or
+                                (payload[3].toInt() and 0xff)
+                        ackWindowSize = size
+                        Log.i(TAGS, "Set ackWindowSize=$ackWindowSize")
+                    }
                 }
                 6 -> { // set peer bandwidth
                     // ignore
@@ -393,7 +412,32 @@ class RtmpServerService : Service() {
                 8, 9 -> { // audio(8) or video(9)
                     // forward to players if this session is publisher
                     if (isPublishing && publishStreamName != null) {
-                        forwardToPlayers(type, timestamp, payload)
+                            // detect sequence headers and cache
+                            try {
+                                if (type == 8 && payload.isNotEmpty()) {
+                                    // audio: check AAC sequence header
+                                    val soundFormat = (payload[0].toInt() shr 4) and 0x0f
+                                    if (soundFormat == 10 && payload.size > 1 && payload[1].toInt() == 0) {
+                                        // AAC sequence header
+                                        aacSequenceHeader = payload.copyOf()
+                                        Log.i(TAGS, "Cached AAC sequence header, len=${aacSequenceHeader?.size}")
+                                    }
+                                } else if (type == 9 && payload.isNotEmpty()) {
+                                    // video: check AVC sequence header
+                                    val codecId = payload[0].toInt() and 0x0f
+                                    // AVC (H.264) codec id = 7
+                                    if (codecId == 7 && payload.size > 1) {
+                                        val avcPacketType = payload[1].toInt() and 0xff
+                                        if (avcPacketType == 0) {
+                                            avcSequenceHeader = payload.copyOf()
+                                            Log.i(TAGS, "Cached AVC sequence header, len=${avcSequenceHeader?.size}")
+                                        }
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                Log.i(TAGS, "Error detecting sequence header: ${e.message}")
+                            }
+                            forwardToPlayers(type, timestamp, payload)
                     }
                 }
                 20, 17 -> { // invoke (AMF0/AMF3) - type 20 is AMF0 invoke
@@ -414,7 +458,7 @@ class RtmpServerService : Service() {
                         Log.i(TAGS, "AMF dump error: ${e.message}")
                     }
                     if (cmd is String) {
-                        handleCommand(cmd, amf)
+                        handleCommand(cmd, amf, streamId)
                     }
                 }
                 else -> {
@@ -423,7 +467,7 @@ class RtmpServerService : Service() {
             }
         }
 
-        private fun handleCommand(cmd: String, amf: Amf0Parser) {
+        private fun handleCommand(cmd: String, amf: Amf0Parser, msgStreamId: Int) {
             when (cmd) {
                 "connect" -> {
                     val transId = amf.readAmf0() as? Double ?: 0.0
@@ -439,7 +483,10 @@ class RtmpServerService : Service() {
                 }
                 "createStream" -> {
                     val transId = amf.readAmf0() as? Double ?: 0.0
-                    val streamId = 1
+                    // allocate a stream id local to this session
+                    lastStreamIdAllocated += 1
+                    val streamId = lastStreamIdAllocated
+                    // track publish/play stream ids accordingly (createStream is typically used by both)
                     val resp = buildCreateStreamResult(transId, streamId)
                     sendRtmpMessage(20, 0, resp)
                 }
@@ -466,6 +513,8 @@ class RtmpServerService : Service() {
                         publishStreamName = full
                         isPublishing = true
                         streams[full] = this
+                        // record the message stream id the publisher used locally
+                        publishStreamId = msgStreamId
                         // Diagnostic logging
                         Log.i(TAGS, "[session#$sessionId] publish parsed name=$name full=$full transIdObj=$transIdObj")
                         RtmpServerState.registerStream(full, sessionId)
@@ -480,23 +529,52 @@ class RtmpServerService : Service() {
                 }
                 "play" -> {
                     val transIdObj = amf.readAmf0()
-                    val name = amf.readAmf0() as? String
+                    // Some clients include null or extra args before the actual stream name.
+                    var name: String? = null
+                    val maxScan = 4
+                    val scanned = mutableListOf<Any?>()
+                    for (i in 0 until maxScan) {
+                        val v = amf.readAmf0()
+                        scanned.add(v)
+                        if (v is String) {
+                            name = v
+                            break
+                        }
+                        if (v == null) continue
+                    }
+                    Log.i(TAGS, "[session#$sessionId] play scannedArgs=$scanned")
                     if (name != null) {
                         val full = "/$appName/$name"
                         Log.i(TAGS, "[session#$sessionId] play parsed name=$name full=$full transIdObj=$transIdObj")
                         val pub = streams[full]
                         if (pub != null) {
                             pub.players.add(this)
+                            // set my local playStreamId to a newly allocated id for this session
+                            lastStreamIdAllocated += 1
+                            playStreamId = lastStreamIdAllocated
                             RtmpServerState.updateSession(pub.sessionId, true, pub.publishStreamName)
-                            Log.i(TAGS, "[session#$sessionId] Client joined as player for $full (publisher=#${pub.sessionId})")
+                            Log.i(TAGS, "[session#$sessionId] Client joined as player for $full (publisher=#${pub.sessionId}) playStreamId=$playStreamId")
                             // send onStatus Play.Start
                             val notif = buildOnStatus("status", "NetStream.Play.Start", "Playing")
-                            sendRtmpMessage(18, 1, notif)
+                            sendRtmpMessage(18, playStreamId, notif)
+                                // send cached sequence headers (if any) to the newly joined player
+                                try {
+                                    pub.aacSequenceHeader?.let { sh ->
+                                        Log.i(TAGS, "Sending cached AAC seq header to player=#$sessionId len=${sh.size}")
+                                        sendRtmpMessage(8, playStreamId, sh)
+                                    }
+                                    pub.avcSequenceHeader?.let { sh ->
+                                        Log.i(TAGS, "Sending cached AVC seq header to player=#$sessionId len=${sh.size}")
+                                        sendRtmpMessage(9, playStreamId, sh)
+                                    }
+                                } catch (e: Exception) {
+                                    Log.i(TAGS, "Error sending cached seq headers: ${e.message}")
+                                }
                         } else {
                             Log.i(TAGS, "No publisher for $full")
                         }
                     } else {
-                        Log.i(TAGS, "[session#$sessionId] play with null name parsed from AMF")
+                        Log.i(TAGS, "[session#$sessionId] play with null name after scanning AMF args")
                     }
                 }
                 else -> {
@@ -509,7 +587,8 @@ class RtmpServerService : Service() {
             val list = players.toList() // snapshot
             for (p in list) {
                 try {
-                    p.sendRtmpMessage(type, p.publishStreamName?.let { 1 } ?: 1, payload, timestamp)
+                    val outStreamId = if (p.playStreamId != 0) p.playStreamId else 1
+                    p.sendRtmpMessage(type, outStreamId, payload, timestamp)
                 } catch (e: Exception) {
                     Log.e(TAGS, "Error forwarding to player", e)
                 }
