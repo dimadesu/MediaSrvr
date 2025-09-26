@@ -350,6 +350,7 @@ class RtmpSession(
                 val trans = transId
                 val resp = if (useAmf3) {
                     Log.i(TAGS, "Using AMF3 response for connect (session#$sessionId)")
+                    RtmpServerState.recordAmf3Usage(sessionId)
                     buildConnectResultAmf3(trans)
                 } else buildConnectResult(trans)
                 sendRtmpMessage(20, 0, resp)
@@ -363,6 +364,7 @@ class RtmpSession(
                 // track publish/play stream ids accordingly (createStream is typically used by both)
                 val resp = if (useAmf3) {
                     Log.i(TAGS, "Using AMF3 response for createStream (session#$sessionId)")
+                    RtmpServerState.recordAmf3Usage(sessionId)
                     buildCreateStreamResultAmf3(transId, streamId)
                 } else buildCreateStreamResult(transId, streamId)
                 sendRtmpMessage(20, 0, resp)
@@ -400,6 +402,7 @@ class RtmpSession(
                     // send onStatus NetStream.Publish.Start to publisher
                     val notif = if (useAmf3) {
                         Log.i(TAGS, "Using AMF3 onStatus for publish (session#$sessionId)")
+                        RtmpServerState.recordAmf3Usage(sessionId)
                         buildOnStatusAmf3("status", "NetStream.Publish.Start", "Publishing")
                     } else buildOnStatus("status", "NetStream.Publish.Start", "Publishing")
                     sendRtmpMessage(18, 1, notif) // data message
@@ -458,6 +461,7 @@ class RtmpSession(
                         // send onStatus Play.Start
                         val notif = if (useAmf3) {
                             Log.i(TAGS, "Using AMF3 onStatus for play (session#$sessionId)")
+                            RtmpServerState.recordAmf3Usage(sessionId)
                             buildOnStatusAmf3("status", "NetStream.Play.Start", "Playing")
                         } else buildOnStatus("status", "NetStream.Play.Start", "Playing")
                         sendRtmpMessage(18, playStreamId, notif)

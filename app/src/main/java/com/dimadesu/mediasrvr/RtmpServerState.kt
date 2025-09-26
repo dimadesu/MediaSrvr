@@ -27,6 +27,11 @@ object RtmpServerState {
     private val _streamsFlow = MutableStateFlow<Map<String, Int>>(emptyMap())
     val streamsFlow: StateFlow<Map<String, Int>> = _streamsFlow
 
+    // Track sessions that used AMF3 replies for simple runtime telemetry
+    private val amf3Sessions = mutableSetOf<Int>()
+    private val _amf3CountFlow = MutableStateFlow(0)
+    val amf3CountFlow: StateFlow<Int> = _amf3CountFlow
+
     // Debounce emissions to at most once per throttleMillis to avoid UI churn under heavy load
     private const val throttleMillis = 200L
     private val emitScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -90,9 +95,19 @@ object RtmpServerState {
             val sess = synchronized(this@RtmpServerState) { sessions.values.toList() }
             val strs = synchronized(this@RtmpServerState) { streams.toMap() }
             // debug log to help trace updates
-            android.util.Log.i("RtmpServerState", "Emitting sessions=${sess.size} streams=${strs.size}")
+            android.util.Log.i("RtmpServerState", "Emitting sessions=${sess.size} streams=${strs.size} amf3Count=${amf3Sessions.size}")
             _sessionsFlow.value = sess
             _streamsFlow.value = strs
+            _amf3CountFlow.value = amf3Sessions.size
+        }
+    }
+
+    @Synchronized
+    fun recordAmf3Usage(sessionId: Int) {
+        val added = amf3Sessions.add(sessionId)
+        if (added) {
+            android.util.Log.i("RtmpServerState", "AMF3 usage recorded for session=$sessionId total=${amf3Sessions.size}")
+            scheduleEmit()
         }
     }
 
