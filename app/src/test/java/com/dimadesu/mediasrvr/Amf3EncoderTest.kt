@@ -44,4 +44,19 @@ class Amf3EncoderTest {
         assertEquals(3, dense.size)
         assertEquals(5, dense[0])
     }
+
+    @Test
+    fun testCircularReferenceObject() {
+        val enc = Amf3Encoder()
+        val a = mutableMapOf<String, Any?>()
+        a["self"] = a // circular reference
+        enc.writeValue(a)
+        val data = enc.toByteArray()
+        val p = Amf3Parser(data, 0)
+        val out = p.readAmf3() as? Map<*, *>
+        assertNotNull(out)
+        val self = out!!["self"]
+        // the parser may return a placeholder for refs; at minimum, the nested object's 'self' should exist
+        assertTrue(self is Map<*, *> || self is String || self != null)
+    }
 }

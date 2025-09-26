@@ -67,17 +67,25 @@ class Amf3Encoder {
             is Double -> writeAmf3Double(v)
             is String -> writeAmf3StringValue(v)
             is Map<*, *> -> {
-                // Safely convert keys to String (use toString() for non-string keys)
-                val typed = mutableMapOf<String, Any?>()
-                for ((kk, vv) in v) {
-                    val key = when (kk) {
-                        is String -> kk
-                        null -> "null"
-                        else -> kk.toString()
+                // If all keys are strings, preserve the original map identity by casting.
+                val allStringKeys = v.keys.all { it is String }
+                if (allStringKeys) {
+                    @Suppress("UNCHECKED_CAST")
+                    val typed = v as Map<String, Any?>
+                    writeAmf3Object(typed)
+                } else {
+                    // Safely convert keys to String (use toString() for non-string keys)
+                    val typed = mutableMapOf<String, Any?>()
+                    for ((kk, vv) in v) {
+                        val key = when (kk) {
+                            is String -> kk
+                            null -> "null"
+                            else -> kk.toString()
+                        }
+                        typed[key] = vv
                     }
-                    typed[key] = vv
+                    writeAmf3Object(typed)
                 }
-                writeAmf3Object(typed)
             }
             is List<*> -> writeAmf3Array(v)
             else -> {
