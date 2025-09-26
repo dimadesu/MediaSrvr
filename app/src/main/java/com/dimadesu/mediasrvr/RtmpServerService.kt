@@ -141,6 +141,8 @@ class RtmpServerService : Service() {
 
     // Global registry of streams -> publisher session
     private val streams = mutableMapOf<String, RtmpSession>()
+    // If a player connects before a publisher, queue players here and attach when publisher arrives
+    private val waitingPlayers = mutableMapOf<String, MutableList<RtmpSession>>()
 
     // helper classes for chunk reassembly
     private class HeaderState(var timestamp: Int, var length: Int, var type: Int, var streamId: Int)
@@ -270,6 +272,11 @@ class RtmpServerService : Service() {
                         if (timestamp == 0xffffff) {
                             timestamp = input.readInt()
                         }
+
+                        // diagnostic: log the parsed message header (fmt/cid/timestamp/length/type/streamId)
+                        try {
+                            Log.i(TAGS, "ChunkHdr fmt=$fmt cid=$cid ts=$timestamp len=$msgLength type=$msgType streamId=$msgStreamId")
+                        } catch (e: Exception) { /* ignore */ }
 
                         // update header state
                         headerStates[cid] = HeaderState(timestamp, msgLength, msgType, msgStreamId)
@@ -410,6 +417,12 @@ class RtmpServerService : Service() {
                     }
                 }
                 8, 9 -> { // audio(8) or video(9)
+                    // diagnostic: always log incoming audio/video so we can see if frames arrive
+                    try {
+                        val preview = payload.take(12).joinToString(" ") { String.format("%02x", it) }
+                        Log.i(TAGS, "Received av type=$type ts=$timestamp len=${payload.size} isPublishing=$isPublishing publishName=$publishStreamName preview=$preview")
+                    } catch (e: Exception) { /* ignore */ }
+
                     // forward to players if this session is publisher
                     if (isPublishing && publishStreamName != null) {
                             // detect sequence headers and cache
@@ -523,6 +536,27 @@ class RtmpServerService : Service() {
                         // send onStatus NetStream.Publish.Start to publisher
                         val notif = buildOnStatus("status", "NetStream.Publish.Start", "Publishing")
                         sendRtmpMessage(18, 1, notif) // data message
+                        // attach any waiting players who tried to play before the publisher existed
+                        val queued = waitingPlayers.remove(full)
+                        if (queued != null) {
+                            for (p in queued) {
+                                try {
+                                    players.add(p)
+                                    // allocate a playStreamId for this player session
+                                    p.lastStreamIdAllocated += 1
+                                    p.playStreamId = p.lastStreamIdAllocated
+                                    Log.i(TAGS, "Attached queued player #${p.sessionId} to $full playStreamId=${p.playStreamId}")
+                                    // notify player
+                                    val pn = buildOnStatus("status", "NetStream.Play.Start", "Playing")
+                                    p.sendRtmpMessage(18, p.playStreamId, pn)
+                                    // send cached seq headers
+                                    this.aacSequenceHeader?.let { sh -> p.sendRtmpMessage(8, p.playStreamId, sh) }
+                                    this.avcSequenceHeader?.let { sh -> p.sendRtmpMessage(9, p.playStreamId, sh) }
+                                } catch (e: Exception) {
+                                    Log.e(TAGS, "Error attaching queued player", e)
+                                }
+                            }
+                        }
                     } else {
                         Log.i(TAGS, "[session#$sessionId] publish with null name after scanning AMF args")
                     }
@@ -571,7 +605,9 @@ class RtmpServerService : Service() {
                                     Log.i(TAGS, "Error sending cached seq headers: ${e.message}")
                                 }
                         } else {
-                            Log.i(TAGS, "No publisher for $full")
+                            Log.i(TAGS, "No publisher for $full — queuing player until publisher appears")
+                            val q = waitingPlayers.getOrPut(full) { mutableListOf() }
+                            q.add(this)
                         }
                     } else {
                         Log.i(TAGS, "[session#$sessionId] play with null name after scanning AMF args")
