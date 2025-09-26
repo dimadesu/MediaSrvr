@@ -31,6 +31,7 @@ class RtmpSession(
     // cached sequence headers
     var aacSequenceHeader: ByteArray? = null
     var avcSequenceHeader: ByteArray? = null
+    var metaData: ByteArray? = null
 
     var appName: String = ""
     var publishStreamName: String? = null
@@ -306,6 +307,24 @@ class RtmpSession(
                     forwardToPlayers(type, timestamp, payload)
                 }
             }
+            18 -> { // data (onMetaData / @setDataFrame)
+                // Cache metadata if this is a publisher sending it, and forward to players
+                try {
+                    val amf = Amf0Parser(payload)
+                    val name = amf.readAmf0() as? String
+                    if (name != null && (name == "onMetaData" || name == "@setDataFrame")) {
+                        // cache raw payload for new players
+                        metaData = payload.copyOf()
+                        Log.i(TAGS, "Cached metadata from publisher=${publishStreamName} name=$name len=${metaData?.size}")
+                    }
+                } catch (e: Exception) {
+                    Log.i(TAGS, "Error parsing data message: ${e.message}")
+                }
+
+                if (isPublishing && publishStreamName != null) {
+                    forwardToPlayers(type, timestamp, payload)
+                }
+            }
             20, 17 -> { // invoke (AMF0/AMF3) - type 20 is AMF0 invoke
                 val amf = Amf0Parser(payload)
                 val cmd = amf.readAmf0()
@@ -422,6 +441,8 @@ class RtmpSession(
                                 // send cached seq headers
                                 this.aacSequenceHeader?.let { sh -> p.sendRtmpMessage(8, p.playStreamId, sh) }
                                 this.avcSequenceHeader?.let { sh -> p.sendRtmpMessage(9, p.playStreamId, sh) }
+                                    // send cached metadata if present
+                                    this.metaData?.let { md -> p.sendRtmpMessage(18, p.playStreamId, md) }
                             } catch (e: Exception) {
                                 Log.e(TAGS, "Error attaching queued player", e)
                             }
@@ -475,6 +496,10 @@ class RtmpSession(
                                 Log.i(TAGS, "Sending cached AVC seq header to player=#$sessionId len=${sh.size}")
                                 sendRtmpMessage(9, playStreamId, sh)
                             }
+                                pub.metaData?.let { md ->
+                                    Log.i(TAGS, "Sending cached metadata to player=#$sessionId len=${md.size}")
+                                    sendRtmpMessage(18, playStreamId, md)
+                                }
                         } catch (e: Exception) {
                             Log.i(TAGS, "Error sending cached seq headers: ${e.message}")
                         }
