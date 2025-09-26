@@ -187,4 +187,98 @@ class Amf0ParserTest {
         val keys = map!!.keys.map { it as String }
         assertEquals(listOf("a", "b"), keys)
     }
+
+    @Test
+    fun testMultibyteBoundarySplit() {
+        // Create a short string where multibyte chars are present and verify byte-based length handling
+        // Use emoji characters which are 4 bytes in UTF-8
+        val s = "🙂🙂" // two emojis, each 4 bytes in UTF-8
+        val bs = s.toByteArray(Charsets.UTF_8)
+        // build short string (marker 2) with length in bytes
+        val baos = java.io.ByteArrayOutputStream()
+        baos.write(2)
+        baos.write((bs.size shr 8) and 0xff)
+        baos.write(bs.size and 0xff)
+        baos.write(bs)
+
+        val parser = Amf0Parser(baos.toByteArray())
+        val out = parser.readAmf0() as? String
+        assertNotNull(out)
+    // characters count should be 2 (use codePointCount to handle surrogate pairs)
+    val charCount = out!!.codePointCount(0, out.length)
+    assertEquals(2, charCount)
+        // byte-length should match
+        assertEquals(bs.size, out.toByteArray(Charsets.UTF_8).size)
+    }
+
+    @Test
+    fun testNestedStrictArraysAndObjects() {
+        // Build strict array [ {"a": [1.1, {"b":"x"}] }, ["y", null] ]
+        val baos = java.io.ByteArrayOutputStream()
+        baos.write(10) // strict array
+        baos.write(java.nio.ByteBuffer.allocate(4).putInt(2).array())
+
+        // element 0: object
+        baos.write(3)
+        // key 'a'
+        val ka = "a".toByteArray(Charsets.UTF_8)
+        baos.write((ka.size shr 8) and 0xff)
+        baos.write(ka.size and 0xff)
+        baos.write(ka)
+        // value: strict array of 2 elements
+        baos.write(10)
+        baos.write(java.nio.ByteBuffer.allocate(4).putInt(2).array())
+        // number 1.1
+        baos.write(0)
+        baos.write(java.nio.ByteBuffer.allocate(8).putDouble(1.1).array())
+        // object {"b":"x"}
+        baos.write(3)
+        val kb = "b".toByteArray(Charsets.UTF_8)
+        baos.write((kb.size shr 8) and 0xff)
+        baos.write(kb.size and 0xff)
+        baos.write(kb)
+        val xb = "x".toByteArray(Charsets.UTF_8)
+        baos.write(2)
+        baos.write((xb.size shr 8) and 0xff)
+        baos.write(xb.size and 0xff)
+        baos.write(xb)
+        // end object
+        baos.write(0)
+        baos.write(0)
+        baos.write(9)
+        // end of strict array inside object value
+
+        // end of object (key length 0 + 9)
+        baos.write(0)
+        baos.write(0)
+        baos.write(9)
+
+        // element 1: strict array ["y", null]
+        baos.write(10)
+        baos.write(java.nio.ByteBuffer.allocate(4).putInt(2).array())
+        val yb = "y".toByteArray(Charsets.UTF_8)
+        baos.write(2)
+        baos.write((yb.size shr 8) and 0xff)
+        baos.write(yb.size and 0xff)
+        baos.write(yb)
+        baos.write(5) // null
+
+        val parser = Amf0Parser(baos.toByteArray())
+        val arr = parser.readAmf0() as? List<*>
+        assertNotNull(arr)
+        assertEquals(2, arr!!.size)
+        val obj0 = arr[0] as? Map<*, *>
+        assertNotNull(obj0)
+        val aVal = obj0!!["a"] as? List<*>
+        assertNotNull(aVal)
+        assertEquals(2, aVal!!.size)
+        assertEquals(1.1, aVal[0] as Double, 0.0001)
+        val innerObj = aVal[1] as? Map<*, *>
+        assertNotNull(innerObj)
+        assertEquals("x", innerObj!!["b"])
+        val arr1 = arr[1] as? List<*>
+        assertNotNull(arr1)
+        assertEquals("y", arr1!![0])
+        assertNull(arr1[1])
+    }
 }
