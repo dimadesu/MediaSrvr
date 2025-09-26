@@ -36,6 +36,7 @@ object RtmpServerState {
     @Synchronized
     fun registerSession(info: RtmpSessionInfo) {
         sessions[info.id] = info
+        android.util.Log.i("RtmpServerState", "registerSession id=${info.id} remote=${info.remote} isPublishing=${info.isPublishing} publishName=${info.publishName}")
         scheduleEmit()
     }
 
@@ -60,6 +61,7 @@ object RtmpServerState {
     @Synchronized
     fun unregisterSession(id: Int) {
         sessions.remove(id)
+        android.util.Log.i("RtmpServerState", "unregisterSession id=$id")
         // remove any streams published by this session
         val toRemove = streams.filterValues { it == id }.keys.toList()
         for (k in toRemove) streams.remove(k)
@@ -69,12 +71,14 @@ object RtmpServerState {
     @Synchronized
     fun registerStream(name: String, publisherId: Int) {
         streams[name] = publisherId
+        android.util.Log.i("RtmpServerState", "registerStream name=$name publisherId=$publisherId")
         scheduleEmit()
     }
 
     @Synchronized
     fun unregisterStream(name: String) {
         streams.remove(name)
+        android.util.Log.i("RtmpServerState", "unregisterStream name=$name")
         scheduleEmit()
     }
 

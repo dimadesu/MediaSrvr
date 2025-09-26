@@ -399,6 +399,20 @@ class RtmpServerService : Service() {
                 20, 17 -> { // invoke (AMF0/AMF3) - type 20 is AMF0 invoke
                     val amf = Amf0Parser(payload)
                     val cmd = amf.readAmf0()
+                    // diagnostic: log invoke command and a small hex preview of the payload
+                    try {
+                        val preview = payload.take(32).joinToString(" ") { String.format("%02x", it) }
+                        Log.i(TAGS, "Invoke cmd=$cmd payloadLen=${payload.size} preview=$preview")
+                    } catch (e: Exception) {
+                        Log.i(TAGS, "Invoke cmd=$cmd payloadLen=${payload.size}")
+                    }
+                    // dump remaining AMF0 values for diagnostics
+                    try {
+                        val dump = amf.dumpRemaining()
+                        Log.i(TAGS, "AMF args dump=${dump}")
+                    } catch (e: Exception) {
+                        Log.i(TAGS, "AMF dump error: ${e.message}")
+                    }
                     if (cmd is String) {
                         handleCommand(cmd, amf)
                     }
@@ -438,12 +452,16 @@ class RtmpServerService : Service() {
                         publishStreamName = full
                         isPublishing = true
                         streams[full] = this
+                        // Diagnostic logging
+                        Log.i(TAGS, "[session#$sessionId] publish parsed name=$name full=$full transIdObj=$transIdObj")
                         RtmpServerState.registerStream(full, sessionId)
                         RtmpServerState.updateSession(sessionId, true, full)
                         Log.i(TAGS, "[session#$sessionId] Client started publishing: $full")
                         // send onStatus NetStream.Publish.Start to publisher
                         val notif = buildOnStatus("status", "NetStream.Publish.Start", "Publishing")
                         sendRtmpMessage(18, 1, notif) // data message
+                    } else {
+                        Log.i(TAGS, "[session#$sessionId] publish with null name parsed from AMF")
                     }
                 }
                 "play" -> {
@@ -451,6 +469,7 @@ class RtmpServerService : Service() {
                     val name = amf.readAmf0() as? String
                     if (name != null) {
                         val full = "/$appName/$name"
+                        Log.i(TAGS, "[session#$sessionId] play parsed name=$name full=$full transIdObj=$transIdObj")
                         val pub = streams[full]
                         if (pub != null) {
                             pub.players.add(this)
@@ -462,6 +481,8 @@ class RtmpServerService : Service() {
                         } else {
                             Log.i(TAGS, "No publisher for $full")
                         }
+                    } else {
+                        Log.i(TAGS, "[session#$sessionId] play with null name parsed from AMF")
                     }
                 }
                 else -> {
@@ -684,6 +705,25 @@ class RtmpServerService : Service() {
                 5, 6 -> null // null or undefined
                 else -> null
             }
+        }
+
+        /**
+         * Return a list of decoded AMF0 values for the remaining bytes without
+         * advancing this parser's position (uses a copy of the remaining buffer).
+         */
+        fun dumpRemaining(): List<Any?> {
+            val rem = data.copyOfRange(pos, data.size)
+            val p = Amf0Parser(rem)
+            val out = mutableListOf<Any?>()
+            while (p.pos < p.data.size) {
+                try {
+                    out.add(p.readAmf0())
+                } catch (e: Exception) {
+                    out.add("<error:${e.message}>")
+                    break
+                }
+            }
+            return out
         }
     }
 
