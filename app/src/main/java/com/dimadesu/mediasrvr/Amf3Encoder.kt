@@ -90,18 +90,44 @@ class Amf3Encoder {
     private fun writeAmf3Object(map: Map<String, Any?>) {
         out.write(0x08)
         // check if object already referenced
+        // object reference check
         val existingIdx = objectRefs.indexOfFirst { it === map }
         if (existingIdx >= 0) {
-            // write object reference
             writeU29(existingIdx shl 1)
             return
         }
-        // inline trait: compute u29o as (propCount<<4) | (dynamic?8:0) | (externalizable?4:0) | 3
+
         val propNames = map.keys.toList()
         val propCount = propNames.size
-    // detect dynamic/externalizable markers from special keys if provided
-    val externalizable = map.containsKey("<externalizable>")
-    val dynamic = map.containsKey("<dynamic>")
+        val externalizable = map.containsKey("<externalizable>")
+        val dynamic = map.containsKey("<dynamic>")
+
+        // Check if a matching trait exists; reuse by writing a trait reference if so
+        val traitIdx = traitRefs.indexOfFirst { it.typeName == "" && it.propNames == propNames && it.externalizable == externalizable && it.dynamic == dynamic }
+        if (traitIdx >= 0) {
+            // trait reference encoding: (traitIdx << 2) | 1
+            val u29o = (traitIdx shl 2) or 1
+            writeU29(u29o)
+            // register object in object refs before writing property values
+            objectRefs.add(map)
+            // write sealed property values
+            val trait = traitRefs[traitIdx]
+            for (pn in trait.propNames) {
+                writeValue(map[pn])
+            }
+            if (trait.dynamic) {
+                for ((k, v) in map) {
+                    if (k in propNames) continue
+                    if (k == "<dynamic>" || k == "<externalizable>") continue
+                    writeAmf3StringInline(k)
+                    writeValue(v)
+                }
+                writeU29(1)
+            }
+            return
+        }
+
+        // inline trait: compute u29o as (propCount<<4) | (dynamic?8:0) | (externalizable?4:0) | 3
         val u29o = (propCount shl 4) or (if (dynamic) 8 else 0) or (if (externalizable) 4 else 0) or 3
         writeU29(u29o)
         // typeName: empty
@@ -110,18 +136,14 @@ class Amf3Encoder {
         for (pn in propNames) writeAmf3StringInline(pn)
         // register trait
         traitRefs.add(Trait("", propNames, externalizable, dynamic))
-        // register object placeholder before writing values (allow references)
-        val placeholder = mutableMapOf<String, Any?>()
-        objectRefs.add(placeholder)
+        // register object instance for reference handling
+        objectRefs.add(map)
         if (externalizable) {
-            // write externalizable placeholder as empty for now (server-side encoding might not produce externalizable normally)
-            // leave placeholder entry
-            placeholder["<externalizable>"] = map["<externalizable>"] ?: "<externalizable>"
-            // no further payload written here
+            // placeholder behavior for externalizable
+            // nothing more to write here
         } else {
             for (pn in propNames) {
                 writeValue(map[pn])
-                placeholder[pn] = map[pn]
             }
             if (dynamic) {
                 // write dynamic members (keys not in propNames)
@@ -130,7 +152,6 @@ class Amf3Encoder {
                     if (k == "<dynamic>" || k == "<externalizable>") continue
                     writeAmf3StringInline(k)
                     writeValue(v)
-                    placeholder[k] = v
                 }
                 // end dynamic with empty string
                 writeU29(1) // empty string header (0<<1 | 1)

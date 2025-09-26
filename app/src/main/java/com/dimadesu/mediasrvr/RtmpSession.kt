@@ -325,10 +325,10 @@ class RtmpSession(
                 }
                 if (cmd is String) {
                     // detect if the remaining args are AMF3-wrapped (AMF0 marker 0x11)
-                    val useAmf3 = when (amf.nextMarker()) {
-                        0x11 -> true
-                        else -> false
-                    }
+                        val useAmf3 = when (amf.nextMarker()) {
+                            0x11 -> true
+                            else -> false
+                        }
                     handleCommand(cmd, amf, streamId, useAmf3)
                 }
             }
@@ -348,7 +348,10 @@ class RtmpSession(
                 }
                 // send _result for connect
                 val trans = transId
-                val resp = if (useAmf3) buildConnectResultAmf3(trans) else buildConnectResult(trans)
+                val resp = if (useAmf3) {
+                    Log.i(TAGS, "Using AMF3 response for connect (session#$sessionId)")
+                    buildConnectResultAmf3(trans)
+                } else buildConnectResult(trans)
                 sendRtmpMessage(20, 0, resp)
                 Log.i(TAGS, "Handled connect, app=$appName")
             }
@@ -358,7 +361,10 @@ class RtmpSession(
                 lastStreamIdAllocated += 1
                 val streamId = lastStreamIdAllocated
                 // track publish/play stream ids accordingly (createStream is typically used by both)
-                val resp = if (useAmf3) buildCreateStreamResultAmf3(transId, streamId) else buildCreateStreamResult(transId, streamId)
+                val resp = if (useAmf3) {
+                    Log.i(TAGS, "Using AMF3 response for createStream (session#$sessionId)")
+                    buildCreateStreamResultAmf3(transId, streamId)
+                } else buildCreateStreamResult(transId, streamId)
                 sendRtmpMessage(20, 0, resp)
             }
             "publish" -> {
@@ -392,7 +398,10 @@ class RtmpSession(
                     RtmpServerState.updateSession(sessionId, true, full)
                     Log.i(TAGS, "[session#$sessionId] Client started publishing: $full")
                     // send onStatus NetStream.Publish.Start to publisher
-                    val notif = if (useAmf3) buildOnStatusAmf3("status", "NetStream.Publish.Start", "Publishing") else buildOnStatus("status", "NetStream.Publish.Start", "Publishing")
+                    val notif = if (useAmf3) {
+                        Log.i(TAGS, "Using AMF3 onStatus for publish (session#$sessionId)")
+                        buildOnStatusAmf3("status", "NetStream.Publish.Start", "Publishing")
+                    } else buildOnStatus("status", "NetStream.Publish.Start", "Publishing")
                     sendRtmpMessage(18, 1, notif) // data message
                     // attach any waiting players who tried to play before the publisher existed
                     val queued = waitingPlayers.remove(full)
@@ -447,7 +456,10 @@ class RtmpSession(
                         RtmpServerState.updateSession(pub.sessionId, true, pub.publishStreamName)
                         Log.i(TAGS, "[session#$sessionId] Client joined as player for $full (publisher=#${pub.sessionId}) playStreamId=$playStreamId")
                         // send onStatus Play.Start
-                        val notif = if (useAmf3) buildOnStatusAmf3("status", "NetStream.Play.Start", "Playing") else buildOnStatus("status", "NetStream.Play.Start", "Playing")
+                        val notif = if (useAmf3) {
+                            Log.i(TAGS, "Using AMF3 onStatus for play (session#$sessionId)")
+                            buildOnStatusAmf3("status", "NetStream.Play.Start", "Playing")
+                        } else buildOnStatus("status", "NetStream.Play.Start", "Playing")
                         sendRtmpMessage(18, playStreamId, notif)
                         // send cached sequence headers (if any) to the newly joined player
                         try {
