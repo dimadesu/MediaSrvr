@@ -40,7 +40,15 @@ class Amf3Parser(private val data: ByteArray, private var startPos: Int = 0) {
         return value
     }
 
-    private fun readU29Signed(): Int {
+    /**
+     * Read a U29 integer and convert to signed 29-bit value (AMF3 U29S interpretation).
+     * This is useful when a protocol field expects signed interpretation (negative values).
+     *
+     * Note: the AMF3 integer marker (0x04) in this parser currently returns the raw U29 value
+     * to preserve full 29-bit range for callers that expect unsigned-like behavior. Use
+     * this function when you need the signed conversion (U29S) semantics.
+     */
+    internal fun readU29Signed(): Int {
         val raw = readU29()
         // convert to signed 29-bit
         return if (raw and 0x10000000 != 0) raw - 0x20000000 else raw

@@ -229,6 +229,48 @@ class Amf3ParserTest {
     }
 
     @Test
+    fun testU29SignedConversion() {
+        // We'll encode a U29 raw value whose signed interpretation should be negative.
+        val out = java.io.ByteArrayOutputStream()
+        // use integer marker
+        out.write(0x04)
+        // raw U29 with top bit set: 0x10000000 (this is bit 28 set) -> as signed should be -0x10000000
+        // but we craft a value that when converted gives a negative small value: take raw = 0x1ffffff0
+        val raw = 0x1ffffff0
+        // helper to write U29 as in this test file
+        fun writeU29Local(o: java.io.ByteArrayOutputStream, v: Int) {
+            var vv = v
+            if (vv < 0x80) {
+                o.write(vv)
+            } else if (vv < 0x4000) {
+                o.write(((vv shr 7) and 0x7f) or 0x80)
+                o.write(vv and 0x7f)
+            } else if (vv < 0x200000) {
+                o.write(((vv shr 14) and 0x7f) or 0x80)
+                o.write(((vv shr 7) and 0x7f) or 0x80)
+                o.write(vv and 0x7f)
+            } else {
+                o.write(((vv shr 22) and 0x7f) or 0x80)
+                o.write(((vv shr 15) and 0x7f) or 0x80)
+                o.write(((vv shr 8) and 0x7f) or 0x80)
+                o.write(vv and 0xff)
+            }
+        }
+        writeU29Local(out, raw)
+        val data = out.toByteArray()
+        val p = Amf3Parser(data, 0)
+        // read marker/byte
+        val marker = data[0].toInt() and 0xff
+        assertEquals(0x04, marker)
+        // advance parser past marker to use readU29Signed directly
+        p.pos = 1
+        val signed = p.readU29Signed()
+        // manual expected signed conversion
+        val expected = if (raw and 0x10000000 != 0) raw - 0x20000000 else raw
+        assertEquals(expected, signed)
+    }
+
+    @Test
     fun testTraitRefIndexing() {
         val out = ByteArrayOutputStream()
         // object 1 inline trait with prop 'x'
