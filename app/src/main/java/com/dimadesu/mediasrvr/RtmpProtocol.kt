@@ -23,3 +23,11 @@ object RtmpTypes {
     const val TYPE_VIDEO = 9
     const val TYPE_AMF0 = 20
 }
+
+object RtmpChannels {
+    const val PROTOCOL = 2
+    const val INVOKE = 3
+    const val AUDIO = 4
+    const val VIDEO = 5
+    const val DATA = 6
+}

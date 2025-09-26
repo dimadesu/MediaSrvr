@@ -36,6 +36,9 @@ class RtmpSession(
     var avcSequenceHeader: ByteArray? = null
     var metaData: ByteArray? = null
 
+    // simple GOP cache: store outgoing chunks for a small recent set
+    private val rtmpGopCache = mutableListOf<ByteArray>()
+
     // recent inbound bytes (ring buffer) for post-mortem debugging
     private val recentBuf = ByteArray(8 * 1024)
     private var recentPos = 0
@@ -342,6 +345,12 @@ class RtmpSession(
                                 // AAC sequence header
                                 aacSequenceHeader = payload.copyOf()
                                 Log.i(TAGS, "Cached AAC sequence header, len=${aacSequenceHeader?.size} preview=${aacSequenceHeader?.take(32)?.joinToString(" ") { String.format("%02x", it) }}")
+                                try {
+                                    val info = AvUtils.parseAacSequenceHeader(aacSequenceHeader!!)
+                                    if (info != null) {
+                                        Log.i(TAGS, "Parsed AAC info profile=${info.profile} sampleRate=${info.sampleRate} channels=${info.channels}")
+                                    }
+                                } catch (_: Exception) { }
                                     lastMediaTimestampMs = System.currentTimeMillis()
                                     publishMonitorJob?.cancel()
                             }
@@ -354,6 +363,12 @@ class RtmpSession(
                                 if (avcPacketType == 0) {
                                     avcSequenceHeader = payload.copyOf()
                                     Log.i(TAGS, "Cached AVC sequence header, len=${avcSequenceHeader?.size} preview=${avcSequenceHeader?.take(32)?.joinToString(" ") { String.format("%02x", it) }}")
+                                    try {
+                                        val info = AvUtils.parseAvcSequenceHeader(avcSequenceHeader!!)
+                                        if (info != null) {
+                                            Log.i(TAGS, "Parsed AVC info profile=${info.profile} level=${info.level} width=${info.width} height=${info.height}")
+                                        }
+                                    } catch (_: Exception) { }
                                         lastMediaTimestampMs = System.currentTimeMillis()
                                         publishMonitorJob?.cancel()
                                 }
@@ -650,6 +665,22 @@ class RtmpSession(
                 // small preview of payload
                 val preview = payload.take(32).joinToString(" ") { String.format("%02x", it) }
                 Log.i(TAGS, "Forwarding type=$type ts=$timestamp len=${payload.size} -> player#${p.sessionId} outStreamId=$outStreamId preview=$preview publisher=${this.sessionId}")
+                // cache non-sequence-header AV frames for new players
+                if (type == 8 || type == 9) {
+                    try {
+                        // skip sequence headers when caching
+                        val isSequence = when (type) {
+                            8 -> (payload.size > 1 && ((payload[0].toInt() shr 4) and 0x0f) == 10 && payload[1].toInt() == 0)
+                            9 -> (payload.size > 1 && ((payload[0].toInt() and 0x0f) == 7) && payload[1].toInt() == 0)
+                            else -> false
+                        }
+                        if (!isSequence) {
+                            // store chunkized bytes for quick replay (we'll store original payload; sendRtmpMessage will chunk)
+                            if (rtmpGopCache.size >= 64) rtmpGopCache.removeAt(0)
+                            rtmpGopCache.add(buildOutgoingChunkSnapshot(type, outStreamId, timestamp, payload))
+                        }
+                    } catch (_: Exception) { }
+                }
                 p.sendRtmpMessage(type, outStreamId, payload, timestamp)
             } catch (e: Exception) {
                 Log.e(TAGS, "Error forwarding to player", e)
@@ -661,10 +692,10 @@ class RtmpSession(
         // choose channel id similar to Node-Media-Server conventions
         // invoke -> channel 3, audio -> 4, video -> 5, data -> 6
         val cid = when (type) {
-            20 -> 3
-            8 -> 4
-            9 -> 5
-            else -> 6
+            20 -> RtmpChannels.INVOKE
+            8 -> RtmpChannels.AUDIO
+            9 -> RtmpChannels.VIDEO
+            else -> RtmpChannels.DATA
         }
 
         // For simplicity handle cid < 64 (single-byte basic header)
@@ -675,44 +706,110 @@ class RtmpSession(
             var offset = 0
             var first = true
             while (remaining > 0) {
-                val chunkSize = if (first) minOf(maxChunk, remaining) else minOf(maxChunk, remaining)
-                // basic header: fmt = 0 for first chunk, fmt = 3 for continuation
+                val chunkSize = minOf(maxChunk, remaining)
                 val fmt = if (first) 0 else 3
-                val basic = ((fmt shl 6) or (cid and 0x3f)).toByte()
-                output.writeByte(basic.toInt())
+
+                // basic header generation (handle extended cid cases like Node-Media-Server)
+                val basicHdr = buildBasicHeader(fmt, cid)
+                output.write(basicHdr)
 
                 if (first) {
-                    // 11-byte message header for fmt=0
-                    val msgHeader = ByteArray(11)
-                    msgHeader[0] = ((timestamp shr 16) and 0xff).toByte()
-                    msgHeader[1] = ((timestamp shr 8) and 0xff).toByte()
-                    msgHeader[2] = (timestamp and 0xff).toByte()
-                    msgHeader[3] = ((payload.size shr 16) and 0xff).toByte()
-                    msgHeader[4] = ((payload.size shr 8) and 0xff).toByte()
-                    msgHeader[5] = (payload.size and 0xff).toByte()
-                    msgHeader[6] = (type and 0xff).toByte()
-                    // stream id little-endian
-                    msgHeader[7] = (streamId and 0xff).toByte()
-                    msgHeader[8] = ((streamId shr 8) and 0xff).toByte()
-                    msgHeader[9] = ((streamId shr 16) and 0xff).toByte()
-                    msgHeader[10] = ((streamId shr 24) and 0xff).toByte()
-                    output.write(msgHeader)
+                    // message header
+                    val msgHeader = java.io.ByteArrayOutputStream()
+                    // timestamp (3 bytes) or 0xffffff placeholder if extended
+                    if (timestamp >= 0xFFFFFF) {
+                        msgHeader.write(((0xFFFFFF shr 16) and 0xff))
+                        msgHeader.write(((0xFFFFFF shr 8) and 0xff))
+                        msgHeader.write((0xFFFFFF and 0xff))
+                    } else {
+                        msgHeader.write(((timestamp shr 16) and 0xff))
+                        msgHeader.write(((timestamp shr 8) and 0xff))
+                        msgHeader.write((timestamp and 0xff))
+                    }
+                    // message length
+                    msgHeader.write(((payload.size shr 16) and 0xff))
+                    msgHeader.write(((payload.size shr 8) and 0xff))
+                    msgHeader.write((payload.size and 0xff))
+                    // message type
+                    msgHeader.write(type and 0xff)
+                    // stream id little endian
+                    msgHeader.write(streamId and 0xff)
+                    msgHeader.write((streamId shr 8) and 0xff)
+                    msgHeader.write((streamId shr 16) and 0xff)
+                    msgHeader.write((streamId shr 24) and 0xff)
+                    output.write(msgHeader.toByteArray())
+
+                    // extended timestamp if needed
+                    if (timestamp >= 0xFFFFFF) {
+                        val ext = java.nio.ByteBuffer.allocate(4).putInt(timestamp).array()
+                        output.write(ext)
+                    }
                 }
 
                 // write payload chunk
                 output.write(payload, offset, chunkSize)
 
-                // log outgoing chunk preview for debugging
-                try {
-                    val pview = payload.take(8).joinToString(" ") { String.format("%02x", it) }
-                    Log.i(TAGS, "sendRtmpMessage type=$type streamId=$streamId cid=$cid chunkSize=$chunkSize remainingAfter=${remaining - chunkSize} preview=$pview")
-                } catch (e: Exception) { /* ignore */ }
-
+                // continuation: if more data remains, write fmt=3 basic header for next chunk(s)
                 remaining -= chunkSize
                 offset += chunkSize
                 first = false
+
+                // if more remains and we will write another chunk, write continuation basic header now
+                if (remaining > 0) {
+                    val contHdr = buildBasicHeader(3, cid)
+                    output.write(contHdr)
+                    // if extended timestamp used, again write ext timestamp for continuation chunks
+                    if (timestamp >= 0xFFFFFF) {
+                        val ext = java.nio.ByteBuffer.allocate(4).putInt(timestamp).array()
+                        output.write(ext)
+                    }
+                }
             }
             output.flush()
+        }
+    }
+
+    // Build RTMP basic header bytes for a given fmt and cid (support single-byte, 2-byte and 3-byte headers)
+    private fun buildBasicHeader(fmt: Int, cid: Int): ByteArray {
+        return when {
+            cid >= 64 + 255 -> {
+                val b = ByteArray(3)
+                b[0] = (((fmt and 0x03) shl 6) or 1).toByte()
+                b[1] = ((cid - 64) and 0xff).toByte()
+                b[2] = (((cid - 64) shr 8) and 0xff).toByte()
+                b
+            }
+            cid >= 64 -> {
+                val b = ByteArray(2)
+                b[0] = (((fmt and 0x03) shl 6) or 0).toByte()
+                b[1] = ((cid - 64) and 0xff).toByte()
+                b
+            }
+            else -> byteArrayOf((((fmt and 0x03) shl 6) or (cid and 0x3f)).toByte())
+        }
+    }
+
+    // Store a small snapshot of outgoing chunk for GOP replay (we store a small header+payload blob)
+    private fun buildOutgoingChunkSnapshot(type: Int, streamId: Int, timestamp: Int, payload: ByteArray): ByteArray {
+        try {
+            val baos = java.io.ByteArrayOutputStream()
+            // prepend a small header so we know type/streamId/timestamp when replaying
+            baos.write(((type shr 24) and 0xff))
+            baos.write(((type shr 16) and 0xff))
+            baos.write(((type shr 8) and 0xff))
+            baos.write((type and 0xff))
+            baos.write(((streamId shr 24) and 0xff))
+            baos.write(((streamId shr 16) and 0xff))
+            baos.write(((streamId shr 8) and 0xff))
+            baos.write((streamId and 0xff))
+            baos.write(((timestamp shr 24) and 0xff))
+            baos.write(((timestamp shr 16) and 0xff))
+            baos.write(((timestamp shr 8) and 0xff))
+            baos.write((timestamp and 0xff))
+            baos.write(payload)
+            return baos.toByteArray()
+        } catch (e: Exception) {
+            return payload
         }
     }
 
