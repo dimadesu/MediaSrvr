@@ -295,7 +295,16 @@ class RtmpServerService : Service() {
                         }
                     }
                 } catch (e: Exception) {
-                    Log.e(TAGS, "session error", e)
+                    when (e) {
+                        is java.net.SocketException,
+                        is java.io.EOFException -> {
+                            // Normal client disconnect - log at info level
+                            Log.i(TAGS, "Client disconnected: ${e.message}")
+                        }
+                        else -> {
+                            Log.e(TAGS, "session error", e)
+                        }
+                    }
                 } finally {
                     cleanup()
                 }
