@@ -577,6 +577,18 @@ class RtmpServerService : Service() {
                         Log.i(TAGS, "[session#$sessionId] play with null name after scanning AMF args")
                     }
                 }
+                "FCPublish" -> {
+                    // Some clients send FCPublish before publish; reply with a minimal _result
+                    val transId = amf.readAmf0() as? Double ?: 0.0
+                    val respBaos = java.io.ByteArrayOutputStream()
+                    respBaos.write(buildStringAmf("_result"))
+                    respBaos.write(buildNumberAmf(transId))
+                    // null
+                    respBaos.write(5)
+                    val resp = respBaos.toByteArray()
+                    sendRtmpMessage(20, 0, resp)
+                    Log.i(TAGS, "Handled FCPublish (trans=$transId)")
+                }
                 else -> {
                     Log.i(TAGS, "Unhandled command: $cmd")
                 }
@@ -588,6 +600,9 @@ class RtmpServerService : Service() {
             for (p in list) {
                 try {
                     val outStreamId = if (p.playStreamId != 0) p.playStreamId else 1
+                    // small preview of payload
+                    val preview = payload.take(16).joinToString(" ") { String.format("%02x", it) }
+                    Log.i(TAGS, "Forwarding type=$type ts=$timestamp len=${payload.size} -> player#${p.sessionId} outStreamId=$outStreamId preview=$preview")
                     p.sendRtmpMessage(type, outStreamId, payload, timestamp)
                 } catch (e: Exception) {
                     Log.e(TAGS, "Error forwarding to player", e)
@@ -639,6 +654,12 @@ class RtmpServerService : Service() {
 
                     // write payload chunk
                     output.write(payload, offset, chunkSize)
+
+                    // log outgoing chunk preview for debugging
+                    try {
+                        val pview = payload.take(8).joinToString(" ") { String.format("%02x", it) }
+                        Log.i(TAGS, "sendRtmpMessage type=$type streamId=$streamId cid=$cid chunkSize=$chunkSize remainingAfter=${remaining - chunkSize} preview=$pview")
+                    } catch (e: Exception) { /* ignore */ }
 
                     remaining -= chunkSize
                     offset += chunkSize
