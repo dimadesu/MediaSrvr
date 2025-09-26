@@ -446,7 +446,21 @@ class RtmpServerService : Service() {
                 "publish" -> {
                     // publish(streamName)
                     val transIdObj = amf.readAmf0()
-                    val name = amf.readAmf0() as? String
+                    // Some clients send null or extra args before the actual stream name.
+                    // Scan next few AMF0 values and pick the first String as the stream name.
+                    var name: String? = null
+                    val maxScan = 4
+                    val scanned = mutableListOf<Any?>()
+                    for (i in 0 until maxScan) {
+                        val v = amf.readAmf0()
+                        scanned.add(v)
+                        if (v is String) {
+                            name = v
+                            break
+                        }
+                        if (v == null) continue
+                    }
+                    Log.i(TAGS, "[session#$sessionId] publish scannedArgs=$scanned")
                     if (name != null) {
                         val full = "/$appName/$name"
                         publishStreamName = full
@@ -461,7 +475,7 @@ class RtmpServerService : Service() {
                         val notif = buildOnStatus("status", "NetStream.Publish.Start", "Publishing")
                         sendRtmpMessage(18, 1, notif) // data message
                     } else {
-                        Log.i(TAGS, "[session#$sessionId] publish with null name parsed from AMF")
+                        Log.i(TAGS, "[session#$sessionId] publish with null name after scanning AMF args")
                     }
                 }
                 "play" -> {
