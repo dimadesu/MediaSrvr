@@ -4,6 +4,10 @@
 
     <!-- Allow network sockets for the embedded RTMP server -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Needed to call startForeground from the service on Android 9+ -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Required when starting a foreground service with type "mediaPlayback" on newer SDKs -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
     <application
         android:allowBackup="true"

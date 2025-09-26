@@ -65,9 +65,20 @@ class RtmpServerService : Service() {
                 serverSocket = ServerSocket(rtmpPort)
                 Log.i(TAG, "RTMP server listening on port $rtmpPort")
                 while (isActive) {
-                    val client = serverSocket!!.accept()
-                    Log.i(TAG, "Accepted connection from ${client.inetAddress.hostAddress}")
-                    handleClient(client)
+                    try {
+                        val client = serverSocket!!.accept()
+                        Log.i(TAG, "Accepted connection from ${client.inetAddress.hostAddress}")
+                        handleClient(client)
+                    } catch (e: Exception) {
+                        // Accept will throw when the server socket is closed during shutdown.
+                        // Treat that as a normal shutdown signal and exit the loop quietly.
+                        if (serverSocket == null || serverSocket!!.isClosed || !isActive) {
+                            Log.i(TAG, "Server socket closed, stopping accept loop")
+                            break
+                        } else {
+                            Log.e(TAG, "Accept failed", e)
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Server error", e)
