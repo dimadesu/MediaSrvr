@@ -22,6 +22,13 @@ class Amf0Parser(private val data: ByteArray) {
         if (pos >= data.size) return null
         val marker = data[pos++].toInt() and 0xff
         return when (marker) {
+            0x11 -> { // AMF3 data (object/value encoded with AMF3)
+                // Delegate to minimal AMF3 parser. It will consume bytes starting at current pos.
+                val amf3 = Amf3Parser(data, pos)
+                val v = amf3.readAmf3()
+                pos += amf3.bytesRead
+                v
+            }
             0 -> { // number (8 bytes)
                 val b = data.copyOfRange(pos, pos + 8)
                 pos += 8
