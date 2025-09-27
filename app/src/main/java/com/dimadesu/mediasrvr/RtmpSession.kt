@@ -778,10 +778,12 @@ class RtmpSession(
                     // emit postPublish so other components (relay/trans) can react
                     NodeEventBus.emit("postPublish", sessionId, full, publishStreamKey)
                     // kick diagnostics: log the next few chunk headers from this publisher
-                    expectPostPublishHeaderCount = 8
-                    expectPostPublishPayloadCount = 6
-                    // enable raw TCP dump for a short burst (bytes)
-                    expectRawDumpBytesRemaining = 1024
+                    // Increase diagnostic windows: more headers and payload previews for stubborn clients
+                    expectPostPublishHeaderCount = 32
+                    expectPostPublishPayloadCount = 16
+                    // enable aggressive raw TCP dump for a short burst (64KB)
+                    expectRawDumpBytesRemaining = 64 * 1024
+                    Log.i(TAGS, "AGGRESSIVE_RAW_LOGGING started: headers=${expectPostPublishHeaderCount} payloads=${expectPostPublishPayloadCount} rawBytes=${expectRawDumpBytesRemaining}")
                     // attach any waiting players who tried to play before the publisher existed
                     val queued = waitingPlayers.remove(full)
                     if (queued != null) {
