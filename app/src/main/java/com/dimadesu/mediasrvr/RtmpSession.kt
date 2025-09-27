@@ -895,64 +895,68 @@ class RtmpSession(
     }
 
     private fun buildConnectResult(transId: Double): ByteArray {
-        val baos = java.io.ByteArrayOutputStream()
-        baos.write(buildStringAmf("_result"))
-        baos.write(buildNumberAmf(transId))
-        val props = mapOf("fmsVer" to "FMS/3,5,7,7009", "capabilities" to 31)
-        baos.write(buildObjectAmf(props))
-        val info = mapOf("level" to "status", "code" to "NetConnection.Connect.Success", "description" to "Connection succeeded.")
-        baos.write(buildObjectAmf(info))
-        return baos.toByteArray()
+        val opt = mapOf<String, Any?>(
+            "cmd" to "_result",
+            "transId" to transId,
+            "cmdObj" to null,
+            "info" to mapOf("level" to "status", "code" to "NetConnection.Connect.Success", "description" to "Connection succeeded.")
+        )
+        return NodeCoreAmf.encodeAmf0Cmd(opt)
     }
 
     // AMF3 encoded variants
     private fun buildConnectResultAmf3(transId: Double): ByteArray {
-        val enc = Amf3Encoder()
-        // _result (string)
-        enc.writeValue("_result")
-        enc.writeValue(transId.toInt())
-        val props = mapOf("fmsVer" to "FMS/3,5,7,7009", "capabilities" to 31)
-        enc.writeValue(props)
-        val info = mapOf("level" to "status", "code" to "NetConnection.Connect.Success", "description" to "Connection succeeded.")
-        enc.writeValue(info)
-        return enc.toByteArray()
+        val opt = mapOf<String, Any?>(
+            "cmd" to "_result",
+            "transId" to transId.toInt(),
+            "cmdObj" to null,
+            "info" to mapOf("level" to "status", "code" to "NetConnection.Connect.Success", "description" to "Connection succeeded.")
+        )
+        return NodeCoreAmf.encodeAmf3Cmd(opt)
     }
 
     private fun buildCreateStreamResult(transId: Double, streamId: Int): ByteArray {
-        val baos = java.io.ByteArrayOutputStream()
-        baos.write(buildStringAmf("_result"))
-        baos.write(buildNumberAmf(transId))
-        baos.write(5) // null
-        baos.write(buildNumberAmf(streamId.toDouble()))
-        return baos.toByteArray()
+        val opt = mapOf<String, Any?>(
+            "cmd" to "_result",
+            "transId" to transId,
+            "cmdObj" to null,
+            "info" to null,
+            // Node's rtmpCmdCode expects third param as info but for createStream result we append streamId as last param
+            // We'll encode manually using NodeCoreAmf.amf0Encode to preserve ordering: cmd, transId, null, streamId
+        )
+        // build array of AMF0 values directly
+        val parts = listOf<Any?>("_result", transId, null, streamId.toDouble())
+        return NodeCoreAmf.amf0Encode(parts)
     }
 
     private fun buildCreateStreamResultAmf3(transId: Double, streamId: Int): ByteArray {
+        val parts = listOf<Any?>("_result", transId.toInt(), null, streamId)
+        // encode first element as AMF0 string and rest as AMF3 values (Node style: cmd as AMF0 string then AMF3 values)
+        val cmdPart = NodeCoreAmf.amf0encString("_result")
         val enc = Amf3Encoder()
-        enc.writeValue("_result")
         enc.writeValue(transId.toInt())
         enc.writeValue(null)
         enc.writeValue(streamId)
-        return enc.toByteArray()
+        return cmdPart + enc.toByteArray()
     }
 
     private fun buildOnStatus(level: String, code: String, desc: String): ByteArray {
-        val baos = java.io.ByteArrayOutputStream()
-        baos.write(buildStringAmf("onStatus"))
-        baos.write(buildNumberAmf(0.0))
-        baos.write(5) // null
-        val info = mapOf("level" to level, "code" to code, "description" to desc)
-        baos.write(buildObjectAmf(info))
-        return baos.toByteArray()
+        val opt = mapOf<String, Any?>(
+            "cmd" to "onStatus",
+            "transId" to 0.0,
+            "cmdObj" to null,
+            "info" to mapOf("level" to level, "code" to code, "description" to desc)
+        )
+        return NodeCoreAmf.encodeAmf0Cmd(opt)
     }
 
     private fun buildOnStatusAmf3(level: String, code: String, desc: String): ByteArray {
-        val enc = Amf3Encoder()
-        enc.writeValue("onStatus")
-        enc.writeValue(0)
-        enc.writeValue(null)
-        val info = mapOf("level" to level, "code" to code, "description" to desc)
-        enc.writeValue(info)
-        return enc.toByteArray()
+        val opt = mapOf<String, Any?>(
+            "cmd" to "onStatus",
+            "transId" to 0,
+            "cmdObj" to null,
+            "info" to mapOf("level" to level, "code" to code, "description" to desc)
+        )
+        return NodeCoreAmf.encodeAmf3Cmd(opt)
     }
 }
