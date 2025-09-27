@@ -628,35 +628,86 @@ class RtmpSession(
                                     var dataCount = 0
                                     val foundOffsets = mutableListOf<Int>()
                                     var i = 0
-                                    while (i + 8 < copy.size) {
-                                        val b = copy[i].toInt() and 0xff
-                                        val fmt = (b shr 6) and 0x03
-                                        var cid = b and 0x3f
+                                    // Attempt to parse basic headers and fmt=0/1 message headers to find full messages
+                                    while (i < copy.size) {
+                                        val remaining = copy.size - i
+                                        val b0 = copy[i].toInt() and 0xff
+                                        val fmt = (b0 shr 6) and 0x03
+                                        var cid = b0 and 0x3f
                                         var basicLen = 1
                                         if (cid == 0) {
-                                            if (i + 1 >= copy.size) break
+                                            if (remaining < 2) break
                                             cid = 64 + (copy[i + 1].toInt() and 0xff)
                                             basicLen = 2
                                         } else if (cid == 1) {
-                                            if (i + 2 >= copy.size) break
+                                            if (remaining < 3) break
                                             cid = 64 + (copy[i + 1].toInt() and 0xff) + ((copy[i + 2].toInt() and 0xff) shl 8)
                                             basicLen = 3
                                         }
-                                        // Only attempt to read type byte when fmt == 0 or 1 and we have enough bytes
-                                        if (fmt == 0 || fmt == 1) {
-                                            val typePos = i + basicLen + 6 // timestamp(3) + msgLen(3) then type
-                                            if (typePos < copy.size) {
-                                                val t = copy[typePos].toInt() and 0xff
+
+                                        // We can reliably parse fmt 0 (11-byte header) and fmt 1 (7-byte header).
+                                        // For fmt 0 and 1, ensure we have enough bytes for header+payload; otherwise skip.
+                                        try {
+                                            if (fmt == 0) {
+                                                val need = basicLen + 11
+                                                if (remaining < need) { i += 1; continue }
+                                                val ts = ((copy[i + basicLen].toInt() and 0xff) shl 16) or
+                                                        ((copy[i + basicLen + 1].toInt() and 0xff) shl 8) or
+                                                        (copy[i + basicLen + 2].toInt() and 0xff)
+                                                val msgLen = ((copy[i + basicLen + 3].toInt() and 0xff) shl 16) or
+                                                        ((copy[i + basicLen + 4].toInt() and 0xff) shl 8) or
+                                                        (copy[i + basicLen + 5].toInt() and 0xff)
+                                                val t = (copy[i + basicLen + 6].toInt() and 0xff)
+                                                var headerExtra = 0
+                                                var extTs = 0
+                                                if (ts == 0xffffff) {
+                                                    // need extended timestamp (4 bytes) after the 11-byte header
+                                                    if (remaining < need + 4) { i += 1; continue }
+                                                    extTs = java.nio.ByteBuffer.wrap(copy, i + basicLen + 11, 4).int
+                                                    headerExtra = 4
+                                                }
+                                                val totalLen = basicLen + 11 + headerExtra + msgLen
+                                                if (remaining < totalLen) { i += 1; continue }
+                                                // full message present
                                                 when (t) {
                                                     8 -> { audioCount += 1; foundOffsets.add(i) }
                                                     9 -> { videoCount += 1; foundOffsets.add(i) }
                                                     18 -> { dataCount += 1; foundOffsets.add(i) }
                                                 }
-                                                // Advance by at least basicLen to avoid re-detecting same header
-                                                i += basicLen
+                                                i += totalLen
+                                                continue
+                                            } else if (fmt == 1) {
+                                                val need = basicLen + 7
+                                                if (remaining < need) { i += 1; continue }
+                                                val ts = ((copy[i + basicLen].toInt() and 0xff) shl 16) or
+                                                        ((copy[i + basicLen + 1].toInt() and 0xff) shl 8) or
+                                                        (copy[i + basicLen + 2].toInt() and 0xff)
+                                                val msgLen = ((copy[i + basicLen + 3].toInt() and 0xff) shl 16) or
+                                                        ((copy[i + basicLen + 4].toInt() and 0xff) shl 8) or
+                                                        (copy[i + basicLen + 5].toInt() and 0xff)
+                                                val t = (copy[i + basicLen + 6].toInt() and 0xff)
+                                                var headerExtra = 0
+                                                if (ts == 0xffffff) {
+                                                    if (remaining < need + 4) { i += 1; continue }
+                                                    headerExtra = 4
+                                                }
+                                                val totalLen = basicLen + 7 + headerExtra + msgLen
+                                                if (remaining < totalLen) { i += 1; continue }
+                                                when (t) {
+                                                    8 -> { audioCount += 1; foundOffsets.add(i) }
+                                                    9 -> { videoCount += 1; foundOffsets.add(i) }
+                                                    18 -> { dataCount += 1; foundOffsets.add(i) }
+                                                }
+                                                i += totalLen
                                                 continue
                                             }
+                                        } catch (e: Exception) {
+                                            // fallback to single-byte advance on parse error
+                                            i += 1
+                                            continue
                                         }
+
+                                        // fmt 2/3 or otherwise unparseable - advance by 1 to continue search
                                         i += 1
                                     }
                                     val previewLen = minOf(200, copy.size)
