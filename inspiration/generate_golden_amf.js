@@ -30,17 +30,27 @@ const connectResult0 = core.encodeAmf0Cmd({
 writeHex("connect_result_amf0", connectResult0);
 
 // _result AMF3 connect (cmd as AMF0 string + AMF3 values)
-const enc3 = Buffer.concat([
-  core.amf0encString("_result"),
-  core.amf3encInteger(1),
-  core.amf3encObject({ fmsVer: "FMS/3,5,7,7009", capabilities: 31 }),
-  core.amf3encObject({
-    level: "status",
-    code: "NetConnection.Connect.Success",
-    description: "Connection succeeded.",
-  }),
-]);
-writeHex("connect_result_amf3", enc3);
+// For AMF3 we build the AMF0 command string, then append AMF3-encoded values
+try {
+  const enc3 = Buffer.concat([
+    core.amf0EncodeOne("_result"),
+    core.amf3Encode([
+      1,
+      { fmsVer: "FMS/3,5,7,7009", capabilities: 31 },
+      {
+        level: "status",
+        code: "NetConnection.Connect.Success",
+        description: "Connection succeeded.",
+      },
+    ]),
+  ]);
+  writeHex("connect_result_amf3", enc3);
+} catch (e) {
+  console.warn(
+    "Skipping AMF3 golden generation (AMF3 object encoder may be unimplemented):",
+    e.message
+  );
+}
 
 // createStream result AMF0
 const createStream0 = core.amf0Encode(["\u0000"]); // placeholder
