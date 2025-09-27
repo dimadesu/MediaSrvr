@@ -61,7 +61,7 @@ object GoldenComparator {
         if (!isEnabled()) return
         try {
             val goldenFile = File(goldenDir, goldenName)
-            val expected: ByteArray = if (goldenFile.exists()) {
+            var expectedRaw: ByteArray = if (goldenFile.exists()) {
                 Files.readAllBytes(goldenFile.toPath())
             } else {
                 // attempt to load from bundled assets/golden/<goldenName>
@@ -80,6 +80,14 @@ object GoldenComparator {
                     return
                 }
             }
+            // If the golden file is stored as ASCII hex (common for generator outputs), decode it.
+            val expected = try {
+                decodeHexIfAscii(expectedRaw = expectedRaw)
+            } catch (e: Exception) {
+                Log.i(TAG, "Error decoding golden hex for $goldenName: ${e.message}")
+                expectedRaw
+            }
+
             if (expected.contentEquals(actual)) {
                 Log.i(TAG, "Golden match: session#$sessionId cmd=$cmd golden=$goldenName len=${actual.size}")
                 return
@@ -138,4 +146,37 @@ object GoldenComparator {
         }
         return buf.toByteArray()
     }
+}
+
+/**
+ * If the provided byte array represents ASCII hex (optionally with whitespace), decode it to raw bytes.
+ * If it's not hex-like, return the original byte array.
+ */
+private fun decodeHexIfAscii(expectedRaw: ByteArray): ByteArray {
+    if (expectedRaw.isEmpty()) return expectedRaw
+    val s = try {
+        String(expectedRaw, Charsets.UTF_8).trim()
+    } catch (e: Exception) {
+        return expectedRaw
+    }
+    // If the string contains only hex chars and whitespace, treat it as hex output
+    if (!s.matches(Regex("^[0-9a-fA-F\\s]+$"))) {
+        return expectedRaw
+    }
+    val hex = s.replace(Regex("\\s+"), "")
+    if (hex.length < 2) return expectedRaw
+    // if odd length, pad with leading 0
+    val evenHex = if (hex.length % 2 != 0) "0$hex" else hex
+    val out = ByteArray(evenHex.length / 2)
+    var j = 0
+    try {
+        for (i in evenHex.indices step 2) {
+            val pair = evenHex.substring(i, i + 2)
+            out[j++] = Integer.parseInt(pair, 16).toByte()
+        }
+    } catch (e: Exception) {
+        // If anything goes wrong, fall back to original raw bytes
+        return expectedRaw
+    }
+    return out
 }
