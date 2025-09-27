@@ -1,8 +1,11 @@
 package com.dimadesu.mediasrvr
 
+import android.content.Context
 import android.util.Log
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.io.InputStream
 import java.nio.file.Files
 import java.nio.file.Paths
 
@@ -36,7 +39,17 @@ object GoldenComparator {
 
     private val diffDir = Paths.get(System.getProperty("user.dir"), "captures", "diffs").toFile()
 
+    // If the app bundles goldens inside assets/golden/, we can read them via this context.
+    // Call GoldenComparator.init(appContext) from your Application or service startup.
+    private var appContext: Context? = null
+
+    fun init(ctx: Context) {
+        appContext = ctx.applicationContext
+        Log.i(TAG, "GoldenComparator initialized with appContext; assets available=${appContext != null}")
+    }
+
     fun isEnabled(): Boolean = enabled && goldenDir.exists()
+        || (appContext != null)
 
     /**
      * Compare an inbound invoke payload (raw RTMP message payload) against a golden file.
@@ -48,11 +61,25 @@ object GoldenComparator {
         if (!isEnabled()) return
         try {
             val goldenFile = File(goldenDir, goldenName)
-            if (!goldenFile.exists()) {
-                Log.i(TAG, "Golden missing for $goldenName; skipping comparator")
-                return
+            val expected: ByteArray = if (goldenFile.exists()) {
+                Files.readAllBytes(goldenFile.toPath())
+            } else {
+                // attempt to load from bundled assets/golden/<goldenName>
+                val ctx = appContext
+                if (ctx != null) {
+                    try {
+                        val assetPath = "golden/$goldenName"
+                        Log.i(TAG, "Golden not found on disk, trying assets: $assetPath")
+                        ctx.assets.open(assetPath).use { ins -> readAllBytes(ins) }
+                    } catch (e: Exception) {
+                        Log.i(TAG, "Golden missing from assets for $goldenName: ${e.message}")
+                        return
+                    }
+                } else {
+                    Log.i(TAG, "Golden missing for $goldenName and no appContext to read assets; skipping comparator")
+                    return
+                }
             }
-            val expected = Files.readAllBytes(goldenFile.toPath())
             if (expected.contentEquals(actual)) {
                 Log.i(TAG, "Golden match: session#$sessionId cmd=$cmd golden=$goldenName len=${actual.size}")
                 return
@@ -98,5 +125,17 @@ object GoldenComparator {
         } catch (e: Exception) {
             Log.i(TAG, "Comparator error: ${e.message}")
         }
+    }
+
+    private fun readAllBytes(ins: InputStream): ByteArray {
+        val buf = ByteArrayOutputStream()
+        val tmp = ByteArray(4096)
+        var r: Int
+        while (true) {
+            r = ins.read(tmp)
+            if (r <= 0) break
+            buf.write(tmp, 0, r)
+        }
+        return buf.toByteArray()
     }
 }
