@@ -258,6 +258,8 @@ class RtmpSession(
         publishStreamName?.let { key ->
             streams.remove(key)
             RtmpServerState.unregisterStream(key)
+            // notify listeners that this publish has ended
+            NodeEventBus.emit("donePublish", sessionId, key, publishStreamKey)
         }
         // remove from any players
         for ((_, s) in streams) {
@@ -526,6 +528,8 @@ class RtmpSession(
                 } catch (e: Exception) { Log.i(TAGS, "Golden comparator (outbound) error: ${e.message}") }
                 sendRtmpMessage(20, 0, resp)
                 Log.i(TAGS, "Handled connect, app=$appName")
+                // mirror Node-Media-Server: emit postConnect
+                NodeEventBus.emit("postConnect", sessionId, mapOf("app" to appName))
             }
             "createStream" -> {
                 val transId = amf.readAmf0() as? Double ?: 0.0
@@ -599,6 +603,8 @@ class RtmpSession(
                         if (goldenResp != null) GoldenComparator.compare(sessionId, "onStatus", goldenResp, notif)
                     } catch (e: Exception) { Log.i(TAGS, "Golden comparator (outbound) error: ${e.message}") }
                     sendRtmpMessage(18, pubStream, notif) // data message
+                    // emit postPublish so other components (relay/trans) can react
+                    NodeEventBus.emit("postPublish", sessionId, full, publishStreamKey)
                     // attach any waiting players who tried to play before the publisher existed
                     val queued = waitingPlayers.remove(full)
                     if (queued != null) {
