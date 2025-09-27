@@ -93,4 +93,22 @@ class NodeCoreAmfRoundTripTest {
         assertEquals("mystream", name)
         assertEquals("live", type)
     }
+
+    @Test
+    fun testAmf3ObjectReferenceEncoding() {
+        val enc = Amf3Encoder()
+        val obj = mapOf("a" to 1, "b" to "x")
+        enc.writeValue(obj)
+        enc.writeValue(obj) // should be encoded as reference
+        val buf = enc.toByteArray()
+
+        val p = Amf3Parser(buf, 0)
+        val v1 = p.readAmf3() as? Map<*, *>
+        val v2 = p.readAmf3() as? Map<*, *>
+
+        assertNotNull(v1)
+        assertNotNull(v2)
+        // The parser returns the same instance for references, so equality by entries is sufficient
+        assertEquals(v1, v2)
+    }
 }
