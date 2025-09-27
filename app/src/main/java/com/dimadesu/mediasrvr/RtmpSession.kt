@@ -97,9 +97,8 @@ class RtmpSession(
                         }
                     }
                 }
-                // chunk reassembly: keep per-cid header state and buffers
-                val headerStates = mutableMapOf<Int, HeaderState>()
-                val inPackets = mutableMapOf<Int, InPacket>()
+                // chunk reassembly: keep per-cid chunk stream helpers
+                val chunkStreams = mutableMapOf<Int, RtmpChunkStream>()
 
                 var sessionBytes: Long = 0L
                 while (!socket.isClosed) {
@@ -190,51 +189,42 @@ class RtmpSession(
                         }
                     } catch (e: Exception) { /* ignore */ }
 
-                    // update header state
-                    headerStates[cid] = HeaderState(timestamp, msgLength, msgType, msgStreamId)
-
-                    // packet buffer for this cid
-                    val pkt = inPackets.getOrPut(cid) { InPacket(msgLength, msgType, msgStreamId) }
-                    // if new message, reset buffer
-                    if (pkt.totalLength != msgLength) {
-                        pkt.totalLength = msgLength
-                        pkt.type = msgType
-                        pkt.streamId = msgStreamId
-                        pkt.buffer = ByteArray(msgLength)
-                        pkt.received = 0
-                    }
+                    // update or create chunk stream helper
+                    val cs = chunkStreams.getOrPut(cid) { RtmpChunkStream(cid, this) }
+                    cs.updateHeader(timestamp, msgLength, msgType, msgStreamId)
 
                     // read chunk payload (could be partial)
-                    val toRead = minOf(inChunkSize - (pkt.received % inChunkSize), msgLength - pkt.received)
+                    val toRead = cs.getChunkDataSize(inChunkSize)
                     var got = 0
+                    if (toRead <= 0) {
+                        throw java.io.EOFException("Unexpected data or zero toRead for cid=$cid")
+                    }
+                    val tmp = ByteArray(toRead)
                     while (got < toRead) {
-                        val beforeGot = got
-                        val r = input.read(pkt.buffer, pkt.received + got, toRead - got)
+                        val r = input.read(tmp, got, toRead - got)
                         if (r <= 0) throw java.io.EOFException("Unexpected EOF while reading chunk payload")
                         // Raw TCP diagnostic: if enabled, log a small hex preview of the newly read bytes
                         try {
                             if (expectRawDumpBytesRemaining > 0) {
-                                        val now = System.currentTimeMillis()
-                                        if (rawDumpStartTimeMs == 0L) rawDumpStartTimeMs = now
-                                        val delta = now - rawDumpStartTimeMs
-                                        val previewLen = minOf(64, r, expectRawDumpBytesRemaining)
-                                        val preview = pkt.buffer.slice(pkt.received + beforeGot until pkt.received + beforeGot + previewLen)
-                                            .joinToString(" ") { String.format("%02x", it) }
-                                        rawDumpBytesLogged += r
-                                        Log.i(TAGS, "RAW_DUMP ts=${now} deltaMs=${delta} logged=${rawDumpBytesLogged} remaining=${expectRawDumpBytesRemaining} read=${r} preview=$preview")
-                                        expectRawDumpBytesRemaining -= r
-                                        if (expectRawDumpBytesRemaining <= 0) {
-                                            Log.i(TAGS, "RAW_DUMP_COMPLETE totalLogged=${rawDumpBytesLogged} durationMs=${now - rawDumpStartTimeMs}")
-                                            expectRawDumpBytesRemaining = 0
-                                        }
+                                val now = System.currentTimeMillis()
+                                if (rawDumpStartTimeMs == 0L) rawDumpStartTimeMs = now
+                                val delta = now - rawDumpStartTimeMs
+                                val previewLen = minOf(64, r, expectRawDumpBytesRemaining)
+                                val preview = tmp.slice(got until got + previewLen).joinToString(" ") { String.format("%02x", it) }
+                                rawDumpBytesLogged += r
+                                Log.i(TAGS, "RAW_DUMP ts=${now} deltaMs=${delta} logged=${rawDumpBytesLogged} remaining=${expectRawDumpBytesRemaining} read=${r} preview=$preview")
+                                expectRawDumpBytesRemaining -= r
+                                if (expectRawDumpBytesRemaining <= 0) {
+                                    Log.i(TAGS, "RAW_DUMP_COMPLETE totalLogged=${rawDumpBytesLogged} durationMs=${now - rawDumpStartTimeMs}")
+                                    expectRawDumpBytesRemaining = 0
+                                }
                             }
                         } catch (e: Exception) { /* ignore raw dump errors */ }
                         // copy the newly read bytes into recentBuf
                         try {
-                            val start = pkt.received + beforeGot
                             var copied = 0
                             while (copied < r) {
-                                recentBuf[recentPos] = pkt.buffer[start + copied]
+                                recentBuf[recentPos] = tmp[got + copied]
                                 recentPos += 1
                                 if (recentPos >= recentBuf.size) { recentPos = 0; recentFull = true }
                                 copied += 1
@@ -242,7 +232,8 @@ class RtmpSession(
                         } catch (e: Exception) { /* ignore */ }
                         got += r
                     }
-                    pkt.received += got
+                    // append bytes into chunk stream's packet
+                    cs.appendBytes(tmp, 0, got)
 
                     // update ack counters (session-level)
                     inBytesSinceStart += got.toLong()
@@ -261,20 +252,21 @@ class RtmpSession(
                         sendRtmpMessage(3, 0, ackBuf)
                     }
 
-                    if (pkt.received >= pkt.totalLength) {
-                        // full message received
+                    // if message complete, hand to session logic
+                    if (cs.isComplete()) {
                         if (expectPostPublishPayloadCount > 0) {
                             try {
-                                val previewLen = minOf(64, pkt.totalLength)
-                                val preview = pkt.buffer.take(previewLen).joinToString(" ") { String.format("%02x", it) }
-                                Log.i(TAGS, "POST_PUBLISH_PAYLOAD remaining=${expectPostPublishPayloadCount} type=${pkt.type} streamId=${pkt.streamId} len=${pkt.totalLength} preview=$preview")
+                                val previewLen = minOf(64, cs.pkt.totalLength)
+                                val preview = cs.pkt.buffer.take(previewLen).joinToString(" ") { String.format("%02x", it) }
+                                Log.i(TAGS, "POST_PUBLISH_PAYLOAD remaining=${expectPostPublishPayloadCount} type=${cs.pkt.type} streamId=${cs.pkt.streamId} len=${cs.pkt.totalLength} preview=$preview")
                             } catch (_: Exception) { }
                             expectPostPublishPayloadCount -= 1
                         }
-                        val full = pkt.buffer
-                        handleMessage(pkt.type, pkt.streamId, timestamp, full)
-                        // reset for next message
-                        inPackets.remove(cid)
+                        val full = cs.pkt.buffer
+                        // call the original handler
+                        handleMessage(cs.pkt.type, cs.pkt.streamId, timestamp, full)
+                        // reset chunk stream packet
+                        chunkStreams.remove(cid)
                     }
                 }
             } catch (e: Exception) {
@@ -621,6 +613,11 @@ class RtmpSession(
                 Log.d(TAGS, "Unhandled msg type=$type len=${payload.size}")
             }
         }
+    }
+
+    // Public wrapper used by RtmpChunkStream to hand completed packets back to the session.
+    fun processCompletedPacket(type: Int, streamId: Int, timestamp: Int, payload: ByteArray) {
+        handleMessage(type, streamId, timestamp, payload)
     }
 
     private fun handleCommand(cmd: String, amf: Amf0Parser, msgStreamId: Int, useAmf3: Boolean) {
