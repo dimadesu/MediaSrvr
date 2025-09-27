@@ -638,6 +638,8 @@ class RtmpSession(
                                 }
                                 this.aacSequenceHeader?.let { sh -> p.sendRtmpMessage(8, p.playStreamId, sh) }
                                 this.avcSequenceHeader?.let { sh -> p.sendRtmpMessage(9, p.playStreamId, sh) }
+                                // mirror Node-Media-Server: emit postPlay for the queued player after playback notifications
+                                NodeEventBus.emit("postPlay", p.sessionId, full, null)
                             } catch (e: Exception) {
                                 Log.e(TAGS, "Error attaching queued player", e)
                             }
@@ -815,6 +817,8 @@ class RtmpSession(
                                 Log.i(TAGS, "Sending cached AVC seq header to player=#$sessionId len=${sh.size}")
                                 sendRtmpMessage(9, playStreamId, sh)
                             }
+                            // mirror Node-Media-Server: emit postPlay after the player has been sent Play.Start and cached headers
+                            NodeEventBus.emit("postPlay", sessionId, full, null)
                         } catch (e: Exception) {
                             Log.i(TAGS, "Error sending cached seq headers: ${e.message}")
                         }
