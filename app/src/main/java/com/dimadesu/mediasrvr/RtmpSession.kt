@@ -570,6 +570,41 @@ class RtmpSession(
                     if (goldenResp != null) GoldenComparator.compare(sessionId, "connect_result", goldenResp, resp)
                 } catch (e: Exception) { Log.i(TAGS, "Golden comparator (outbound) error: ${e.message}") }
                 sendRtmpMessage(20, 0, resp)
+                // Advertise preferred outgoing chunk size and window sizes like Node-Media-Server
+                try {
+                    // prefer a larger outgoing chunk size for server->client pushes
+                    outChunkSize = 8192
+                    val setChunkPayload = ByteArray(4)
+                    setChunkPayload[0] = ((outChunkSize shr 24) and 0xff).toByte()
+                    setChunkPayload[1] = ((outChunkSize shr 16) and 0xff).toByte()
+                    setChunkPayload[2] = ((outChunkSize shr 8) and 0xff).toByte()
+                    setChunkPayload[3] = (outChunkSize and 0xff).toByte()
+                    sendRtmpMessage(1, 0, setChunkPayload) // Set Chunk Size
+                    Log.i(TAGS, "Sent SetChunkSize=$outChunkSize to client")
+
+                    // Window acknowledgement size (example: 2MB)
+                    val windowAck = 2 * 1024 * 1024
+                    val winPayload = ByteArray(4)
+                    winPayload[0] = ((windowAck shr 24) and 0xff).toByte()
+                    winPayload[1] = ((windowAck shr 16) and 0xff).toByte()
+                    winPayload[2] = ((windowAck shr 8) and 0xff).toByte()
+                    winPayload[3] = (windowAck and 0xff).toByte()
+                    sendRtmpMessage(5, 0, winPayload) // Window Acknowledgement Size
+                    Log.i(TAGS, "Sent WindowAckSize=${windowAck} to client")
+
+                    // Set Peer Bandwidth (4 bytes window + 1 byte flag). flag=2 (dynamic)
+                    val pb = ByteArray(5)
+                    pb[0] = ((windowAck shr 24) and 0xff).toByte()
+                    pb[1] = ((windowAck shr 16) and 0xff).toByte()
+                    pb[2] = ((windowAck shr 8) and 0xff).toByte()
+                    pb[3] = (windowAck and 0xff).toByte()
+                    pb[4] = 2
+                    sendRtmpMessage(6, 0, pb) // Set Peer Bandwidth
+                    Log.i(TAGS, "Sent SetPeerBandwidth window=${windowAck} flag=2 to client")
+                } catch (e: Exception) {
+                    Log.i(TAGS, "Error sending server-side control messages: ${e.message}")
+                }
+
                 Log.i(TAGS, "Handled connect, app=$appName")
                 // mirror Node-Media-Server: emit postConnect
                 NodeEventBus.emit("postConnect", sessionId, mapOf("app" to appName))
