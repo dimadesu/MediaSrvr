@@ -604,10 +604,9 @@ class RtmpSession(
                     publishMonitorJob?.cancel()
                     publishMonitorJob = serverScope.launch {
                         delay(5000)
-                        // if no media after timeout, log and dump recent inbound bytes
                         val now = System.currentTimeMillis()
                         if (now - lastMediaTimestampMs >= 4000) {
-                            Log.i(TAGS, "No AV/data received from publisher session#$sessionId within timeout — dumping recent inbound bytes and sending diagnostic onStatus")
+                            Log.i(TAGS, "No AV/data received from publisher session#$sessionId within timeout — dumping recent inbound bytes (log-only) and sending diagnostic onStatus")
                             try {
                                 val len = if (recentFull) recentBuf.size else recentPos
                                 val copy = ByteArray(len)
@@ -621,14 +620,13 @@ class RtmpSession(
                                 val b64 = android.util.Base64.encodeToString(copy, android.util.Base64.NO_WRAP)
                                 Log.i(TAGS, "Publish monitor recent inbound base64(len=${len})=$b64")
                                 // Heuristic RTMP scan: try to locate RTMP basic headers and extract message-type
-                                // for chunks with fmt 0 or 1 (where the type byte is present).
+                                // for chunks with fmt 0 or 1 (where the type byte is present). This is log-only.
                                 try {
                                     var audioCount = 0
                                     var videoCount = 0
                                     var dataCount = 0
                                     val foundOffsets = mutableListOf<Int>()
                                     var i = 0
-                                    // Attempt to parse basic headers and fmt=0/1 message headers to find full messages
                                     while (i < copy.size) {
                                         val remaining = copy.size - i
                                         val b0 = copy[i].toInt() and 0xff
@@ -645,8 +643,6 @@ class RtmpSession(
                                             basicLen = 3
                                         }
 
-                                        // We can reliably parse fmt 0 (11-byte header) and fmt 1 (7-byte header).
-                                        // For fmt 0 and 1, ensure we have enough bytes for header+payload; otherwise skip.
                                         try {
                                             if (fmt == 0) {
                                                 val need = basicLen + 11
@@ -659,16 +655,12 @@ class RtmpSession(
                                                         (copy[i + basicLen + 5].toInt() and 0xff)
                                                 val t = (copy[i + basicLen + 6].toInt() and 0xff)
                                                 var headerExtra = 0
-                                                var extTs = 0
                                                 if (ts == 0xffffff) {
-                                                    // need extended timestamp (4 bytes) after the 11-byte header
                                                     if (remaining < need + 4) { i += 1; continue }
-                                                    extTs = java.nio.ByteBuffer.wrap(copy, i + basicLen + 11, 4).int
                                                     headerExtra = 4
                                                 }
                                                 val totalLen = basicLen + 11 + headerExtra + msgLen
                                                 if (remaining < totalLen) { i += 1; continue }
-                                                // full message present
                                                 when (t) {
                                                     8 -> { audioCount += 1; foundOffsets.add(i) }
                                                     9 -> { videoCount += 1; foundOffsets.add(i) }
@@ -702,12 +694,10 @@ class RtmpSession(
                                                 continue
                                             }
                                         } catch (e: Exception) {
-                                            // fallback to single-byte advance on parse error
                                             i += 1
                                             continue
                                         }
 
-                                        // fmt 2/3 or otherwise unparseable - advance by 1 to continue search
                                         i += 1
                                     }
                                     val previewLen = minOf(200, copy.size)
@@ -719,7 +709,7 @@ class RtmpSession(
                             } catch (e: Exception) {
                                 Log.i(TAGS, "Error in publish monitor dump: ${e.message}")
                             }
-                            // send a diagnostic onStatus to the publisher
+                            // send a diagnostic onStatus to the publisher (log-only, no files written)
                             val diag = buildOnStatus("error", "NetStream.Publish.NoMedia", "No media frames received")
                             try {
                                 val db64 = android.util.Base64.encodeToString(diag, android.util.Base64.NO_WRAP)
