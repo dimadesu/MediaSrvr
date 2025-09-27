@@ -235,6 +235,19 @@ class RtmpSession(
                     // append bytes into chunk stream's packet
                     cs.appendBytes(tmp, 0, got)
 
+                    // update per-chunk ack counters (Moblin-style fields on InPacket)
+                    try {
+                        cs.pkt.bytesReadSinceStart += got
+                        // initialize per-pkt ackWindow from session ackWindowSize when available
+                        if (cs.pkt.ackWindow == 0 && ackWindowSize > 0) {
+                            cs.pkt.ackWindow = ackWindowSize
+                        }
+                        if (cs.pkt.ackWindow > 0 && cs.pkt.bytesReadSinceStart - cs.pkt.lastAck >= cs.pkt.ackWindow) {
+                            cs.pkt.lastAck = cs.pkt.bytesReadSinceStart
+                            Log.i(TAGS, "Per-chunk ack threshold reached cid=$cid bytes=${cs.pkt.bytesReadSinceStart} ackWindow=${cs.pkt.ackWindow}")
+                        }
+                    } catch (e: Exception) { /* ignore per-chunk ack counter errors */ }
+
                     // update ack counters (session-level)
                     inBytesSinceStart += got.toLong()
                     sessionBytes += got.toLong()
