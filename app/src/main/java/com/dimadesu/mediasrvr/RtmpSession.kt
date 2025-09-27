@@ -13,7 +13,8 @@ class RtmpSession(
     private val output: DataOutputStream,
     private val serverScope: CoroutineScope,
     private val streams: MutableMap<String, RtmpSession>,
-    private val waitingPlayers: MutableMap<String, MutableList<RtmpSession>>
+    private val waitingPlayers: MutableMap<String, MutableList<RtmpSession>>,
+    private val delegate: RtmpServerDelegate? = null
 ) {
     private val TAGS = "RtmpSession"
     // set to true temporarily to emit full payload base64 dumps for AV/data messages
@@ -347,6 +348,10 @@ class RtmpSession(
 
             streams.remove(key)
             RtmpServerState.unregisterStream(key)
+            // notify delegate that publish stopped
+            try {
+                delegate?.onPublishStop(key, sessionId, null)
+            } catch (_: Exception) { }
             // notify listeners that this publish has ended
             NodeEventBus.emit("donePublish", sessionId, key, publishStreamKey)
         }
@@ -476,6 +481,10 @@ class RtmpSession(
                                 } catch (_: Exception) { }
                                     lastMediaTimestampMs = System.currentTimeMillis()
                                     publishMonitorJob?.cancel()
+                                    // notify delegate about sequence header (as audio buffer)
+                                    try {
+                                        delegate?.onAudioBuffer(sessionId, aacSequenceHeader!!)
+                                    } catch (_: Exception) { }
                             }
                         } else if (type == 9 && payload.isNotEmpty()) {
                             // video: check AVC sequence header
@@ -494,6 +503,10 @@ class RtmpSession(
                                     } catch (_: Exception) { }
                                         lastMediaTimestampMs = System.currentTimeMillis()
                                         publishMonitorJob?.cancel()
+                                        // notify delegate about sequence header (as video buffer)
+                                        try {
+                                            delegate?.onVideoBuffer(sessionId, avcSequenceHeader!!)
+                                        } catch (_: Exception) { }
                                 }
                             }
                         }
@@ -501,6 +514,11 @@ class RtmpSession(
                         Log.i(TAGS, "Error detecting sequence header: ${e.message}")
                     }
                     forwardToPlayers(type, timestamp, payload)
+                    // notify delegate of raw media frames as well
+                    try {
+                        if (type == 8) delegate?.onAudioBuffer(sessionId, payload)
+                        if (type == 9) delegate?.onVideoBuffer(sessionId, payload)
+                    } catch (_: Exception) { }
                 }
             }
             18 -> { // data (onMetaData / @setDataFrame)
@@ -808,6 +826,10 @@ class RtmpSession(
                     }
                     // emit postPublish so other components (relay/trans) can react
                     NodeEventBus.emit("postPublish", sessionId, full, publishStreamKey)
+                    // notify delegate that a publish started
+                    try {
+                        delegate?.onPublishStart(full, sessionId)
+                    } catch (_: Exception) { }
                     // kick diagnostics: log the next few chunk headers from this publisher
                     // Increase diagnostic windows: more headers and payload previews for stubborn clients
                     expectPostPublishHeaderCount = 32

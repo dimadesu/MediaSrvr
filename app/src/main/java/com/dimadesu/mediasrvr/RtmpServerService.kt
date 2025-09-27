@@ -133,7 +133,7 @@ class RtmpServerService : Service() {
                     // Keep connection open - for now just sleep and log
                     // Start RTMP session handler and wait until it finishes before closing socket
                     val sessionId = connectionIdCounter.getAndIncrement()
-                    val session = RtmpSession(sessionId, sock, input, output, serverScope, streams, waitingPlayers)
+                    val session = RtmpSession(sessionId, sock, input, output, serverScope, streams, waitingPlayers, delegate)
                     val job = session.run()
                     // wait for the session to complete (suspends here)
                     job.join()
@@ -145,6 +145,10 @@ class RtmpServerService : Service() {
     }
 
     private val connectionIdCounter = AtomicInteger(1)
+
+    // Optional external delegate that can receive higher-level server events
+    // (set by the hosting application to integrate with UI or other components)
+    var delegate: RtmpServerDelegate? = null
 
     // Global registry of streams -> publisher session
     private val streams = mutableMapOf<String, RtmpSession>()
