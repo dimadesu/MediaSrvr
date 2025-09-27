@@ -61,6 +61,7 @@ class RtmpSession(
     private var connectMonitorJob: Job? = null
     // temporary diagnostic: after a publish starts, log the next N chunk headers to see what the client sends
     private var expectPostPublishHeaderCount: Int = 0
+    private var expectPostPublishPayloadCount: Int = 0
 
     fun run(): Job {
         return serverScope.launch {
@@ -239,6 +240,14 @@ class RtmpSession(
 
                     if (pkt.received >= pkt.totalLength) {
                         // full message received
+                        if (expectPostPublishPayloadCount > 0) {
+                            try {
+                                val previewLen = minOf(64, pkt.totalLength)
+                                val preview = pkt.buffer.take(previewLen).joinToString(" ") { String.format("%02x", it) }
+                                Log.i(TAGS, "POST_PUBLISH_PAYLOAD remaining=${expectPostPublishPayloadCount} type=${pkt.type} streamId=${pkt.streamId} len=${pkt.totalLength} preview=$preview")
+                            } catch (_: Exception) { }
+                            expectPostPublishPayloadCount -= 1
+                        }
                         val full = pkt.buffer
                         handleMessage(pkt.type, pkt.streamId, timestamp, full)
                         // reset for next message
@@ -644,6 +653,7 @@ class RtmpSession(
                     NodeEventBus.emit("postPublish", sessionId, full, publishStreamKey)
                     // kick diagnostics: log the next few chunk headers from this publisher
                     expectPostPublishHeaderCount = 8
+                    expectPostPublishPayloadCount = 6
                     // attach any waiting players who tried to play before the publisher existed
                     val queued = waitingPlayers.remove(full)
                     if (queued != null) {
