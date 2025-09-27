@@ -529,6 +529,52 @@ class RtmpSession(
                     handleCommand(cmd, amf, streamId, useAmf3)
                 }
             }
+            22 -> { // Aggregate (FLV Aggregate)
+                try {
+                    val preview = payload.take(32).joinToString(" ") { String.format("%02x", it) }
+                    Log.i(TAGS, "Aggregate message received len=${payload.size} preview=$preview")
+                    // Parse FLV tags inside aggregate payload: tag header = 11 bytes, then data, then previousTagSize (4 bytes)
+                    var idx = 0
+                    var tagCount = 0
+                    while (idx + 11 <= payload.size) {
+                        val tagType = payload[idx].toInt() and 0xff
+                        val dataSize = ((payload[idx + 1].toInt() and 0xff) shl 16) or
+                                ((payload[idx + 2].toInt() and 0xff) shl 8) or
+                                (payload[idx + 3].toInt() and 0xff)
+                        val ts = ((payload[idx + 4].toInt() and 0xff) shl 16) or
+                                ((payload[idx + 5].toInt() and 0xff) shl 8) or
+                                (payload[idx + 6].toInt() and 0xff)
+                        val tsExt = payload[idx + 7].toInt() and 0xff
+                        val fullTs = (tsExt shl 24) or ts
+                        // streamId at idx+8..idx+10 (ignored)
+                        val tagHeaderTotal = 11
+                        val prevTagSizeTotal = 4
+                        val tagTotal = tagHeaderTotal + dataSize + prevTagSizeTotal
+                        if (idx + tagTotal > payload.size) break
+                        val tagPayloadStart = idx + tagHeaderTotal
+                        val tagPayloadEnd = tagPayloadStart + dataSize
+                        val tagPayload = payload.copyOfRange(tagPayloadStart, tagPayloadEnd)
+                        // forward known tag types to players
+                        when (tagType) {
+                            8 -> { // audio
+                                if (isPublishing) forwardToPlayers(8, fullTs, tagPayload)
+                            }
+                            9 -> { // video
+                                if (isPublishing) forwardToPlayers(9, fullTs, tagPayload)
+                            }
+                            18 -> { // script/data
+                                if (isPublishing) forwardToPlayers(18, fullTs, tagPayload)
+                            }
+                            else -> { /* ignore other tag types */ }
+                        }
+                        tagCount += 1
+                        idx += tagTotal
+                    }
+                    Log.i(TAGS, "Aggregate parsed tagCount=${tagCount}")
+                } catch (e: Exception) {
+                    Log.i(TAGS, "Error parsing aggregate message: ${e.message}")
+                }
+            }
             else -> {
                 Log.d(TAGS, "Unhandled msg type=$type len=${payload.size}")
             }
@@ -949,6 +995,48 @@ class RtmpSession(
                 sendRtmpMessage(20, 0, resp)
                 Log.i(TAGS, "Handled FCPublish (trans=$transId)")
             }
+            "closeStream" -> {
+                // client wants to close an outgoing stream
+                Log.i(TAGS, "closeStream received for session#$sessionId")
+                // if we were publishing, tidy up
+                if (isPublishing) {
+                    publishStreamName?.let { key ->
+                        streams.remove(key)
+                        RtmpServerState.unregisterStream(key)
+                        NodeEventBus.emit("donePublish", sessionId, key, publishStreamKey)
+                    }
+                    isPublishing = false
+                }
+                // reply _result
+                val transId = amf.readAmf0() as? Double ?: 0.0
+                val resp = NodeCoreAmf.encodeAmf0Cmd(mapOf("cmd" to "_result", "transId" to transId, "cmdObj" to null))
+                sendRtmpMessage(20, 0, resp)
+            }
+            "deleteStream" -> {
+                Log.i(TAGS, "deleteStream received for session#$sessionId")
+                // read possible stream id argument
+                try {
+                    val sid = amf.readAmf0()
+                    // best-effort cleanup if it matches our publishStreamId
+                    if (sid is Double && sid.toInt() == publishStreamId) {
+                        publishStreamName?.let { key ->
+                            streams.remove(key)
+                            RtmpServerState.unregisterStream(key)
+                            NodeEventBus.emit("donePublish", sessionId, key, publishStreamKey)
+                        }
+                        isPublishing = false
+                    }
+                } catch (_: Exception) { }
+                val transId = amf.readAmf0() as? Double ?: 0.0
+                val resp = NodeCoreAmf.encodeAmf0Cmd(mapOf("cmd" to "_result", "transId" to transId, "cmdObj" to null))
+                sendRtmpMessage(20, 0, resp)
+            }
+            "releaseStream" -> {
+                Log.i(TAGS, "releaseStream received for session#$sessionId")
+                val transId = amf.readAmf0() as? Double ?: 0.0
+                val resp = NodeCoreAmf.encodeAmf0Cmd(mapOf("cmd" to "_result", "transId" to transId, "cmdObj" to null))
+                sendRtmpMessage(20, 0, resp)
+            }
             else -> {
                 Log.i(TAGS, "Unhandled command: $cmd")
             }
@@ -993,6 +1081,8 @@ class RtmpSession(
             20 -> RtmpChannels.INVOKE
             8 -> RtmpChannels.AUDIO
             9 -> RtmpChannels.VIDEO
+            // protocol/control messages map to protocol channel
+            1, 3, 4, 5, 6 -> RtmpChannels.PROTOCOL
             else -> RtmpChannels.DATA
         }
 
