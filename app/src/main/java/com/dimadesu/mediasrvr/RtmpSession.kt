@@ -64,6 +64,9 @@ class RtmpSession(
     private var expectPostPublishPayloadCount: Int = 0
     // raw TCP dump: when >0, log previews of raw bytes read from the socket (decrements as bytes are logged)
     private var expectRawDumpBytesRemaining: Int = 0
+    // timestamp and counters for aggressive raw logging
+    private var rawDumpStartTimeMs: Long = 0L
+    private var rawDumpBytesLogged: Int = 0
 
     fun run(): Job {
         return serverScope.launch {
@@ -211,12 +214,19 @@ class RtmpSession(
                         // Raw TCP diagnostic: if enabled, log a small hex preview of the newly read bytes
                         try {
                             if (expectRawDumpBytesRemaining > 0) {
-                                val previewLen = minOf(64, r, expectRawDumpBytesRemaining)
-                                val preview = pkt.buffer.slice(pkt.received + beforeGot until pkt.received + beforeGot + previewLen)
-                                    .joinToString(" ") { String.format("%02x", it) }
-                                Log.i(TAGS, "RAW_DUMP remaining=${expectRawDumpBytesRemaining} read=${r} preview=$preview")
-                                expectRawDumpBytesRemaining -= r
-                                if (expectRawDumpBytesRemaining < 0) expectRawDumpBytesRemaining = 0
+                                        val now = System.currentTimeMillis()
+                                        if (rawDumpStartTimeMs == 0L) rawDumpStartTimeMs = now
+                                        val delta = now - rawDumpStartTimeMs
+                                        val previewLen = minOf(64, r, expectRawDumpBytesRemaining)
+                                        val preview = pkt.buffer.slice(pkt.received + beforeGot until pkt.received + beforeGot + previewLen)
+                                            .joinToString(" ") { String.format("%02x", it) }
+                                        rawDumpBytesLogged += r
+                                        Log.i(TAGS, "RAW_DUMP ts=${now} deltaMs=${delta} logged=${rawDumpBytesLogged} remaining=${expectRawDumpBytesRemaining} read=${r} preview=$preview")
+                                        expectRawDumpBytesRemaining -= r
+                                        if (expectRawDumpBytesRemaining <= 0) {
+                                            Log.i(TAGS, "RAW_DUMP_COMPLETE totalLogged=${rawDumpBytesLogged} durationMs=${now - rawDumpStartTimeMs}")
+                                            expectRawDumpBytesRemaining = 0
+                                        }
                             }
                         } catch (e: Exception) { /* ignore raw dump errors */ }
                         // copy the newly read bytes into recentBuf
@@ -783,6 +793,8 @@ class RtmpSession(
                     expectPostPublishPayloadCount = 16
                     // enable aggressive raw TCP dump for a short burst (64KB)
                     expectRawDumpBytesRemaining = 64 * 1024
+                    rawDumpStartTimeMs = 0L
+                    rawDumpBytesLogged = 0
                     Log.i(TAGS, "AGGRESSIVE_RAW_LOGGING started: headers=${expectPostPublishHeaderCount} payloads=${expectPostPublishPayloadCount} rawBytes=${expectRawDumpBytesRemaining}")
                     // attach any waiting players who tried to play before the publisher existed
                     val queued = waitingPlayers.remove(full)
