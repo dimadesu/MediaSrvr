@@ -515,6 +515,13 @@ class RtmpSession(
                     RtmpServerState.recordAmf3Usage(sessionId)
                     buildConnectResultAmf3(trans)
                 } else buildConnectResult(trans)
+                // Compare the outbound server response against the server-side golden (if present)
+                try {
+                    val suffixResp = if (useAmf3) "amf3.hex" else "amf0.hex"
+                    val candidatesResp = listOf("connect_result_$suffixResp")
+                    val goldenResp = GoldenComparator.resolveExistingGoldenName(candidatesResp)
+                    if (goldenResp != null) GoldenComparator.compare(sessionId, "connect_result", goldenResp, resp)
+                } catch (e: Exception) { Log.i(TAGS, "Golden comparator (outbound) error: ${e.message}") }
                 sendRtmpMessage(20, 0, resp)
                 Log.i(TAGS, "Handled connect, app=$appName")
             }
@@ -531,6 +538,12 @@ class RtmpSession(
                     RtmpServerState.recordAmf3Usage(sessionId)
                     buildCreateStreamResultAmf3(transId, streamId)
                 } else buildCreateStreamResult(transId, streamId)
+                try {
+                    val suffixResp = if (useAmf3) "amf3.hex" else "amf0.hex"
+                    val candidatesResp = listOf("create_stream_result_$suffixResp", "create_stream_$suffixResp")
+                    val goldenResp = GoldenComparator.resolveExistingGoldenName(candidatesResp)
+                    if (goldenResp != null) GoldenComparator.compare(sessionId, "createStream_result", goldenResp, resp)
+                } catch (e: Exception) { Log.i(TAGS, "Golden comparator (outbound) error: ${e.message}") }
                 sendRtmpMessage(20, 0, resp)
             }
             "publish" -> {
@@ -577,6 +590,12 @@ class RtmpSession(
                         val b64 = android.util.Base64.encodeToString(notif, android.util.Base64.NO_WRAP)
                         Log.i(TAGS, "OnStatus payload base64(len=${notif.size})=$b64")
                     } catch (e: Exception) { /* ignore */ }
+                    try {
+                        val suffixResp = if (useAmf3) "amf3.hex" else "amf0.hex"
+                        val candidatesResp = listOf("onstatus_$suffixResp", "onstatus_result_$suffixResp")
+                        val goldenResp = GoldenComparator.resolveExistingGoldenName(candidatesResp)
+                        if (goldenResp != null) GoldenComparator.compare(sessionId, "onStatus", goldenResp, notif)
+                    } catch (e: Exception) { Log.i(TAGS, "Golden comparator (outbound) error: ${e.message}") }
                     sendRtmpMessage(18, pubStream, notif) // data message
                     // start monitor: if no media frames or metadata arrive within N seconds, nudge and dump recent bytes
                     lastMediaTimestampMs = System.currentTimeMillis()
