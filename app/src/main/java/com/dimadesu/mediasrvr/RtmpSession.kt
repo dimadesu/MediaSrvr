@@ -62,6 +62,8 @@ class RtmpSession(
     // temporary diagnostic: after a publish starts, log the next N chunk headers to see what the client sends
     private var expectPostPublishHeaderCount: Int = 0
     private var expectPostPublishPayloadCount: Int = 0
+    // raw TCP dump: when >0, log previews of raw bytes read from the socket (decrements as bytes are logged)
+    private var expectRawDumpBytesRemaining: Int = 0
 
     fun run(): Job {
         return serverScope.launch {
@@ -206,6 +208,17 @@ class RtmpSession(
                         val beforeGot = got
                         val r = input.read(pkt.buffer, pkt.received + got, toRead - got)
                         if (r <= 0) throw java.io.EOFException("Unexpected EOF while reading chunk payload")
+                        // Raw TCP diagnostic: if enabled, log a small hex preview of the newly read bytes
+                        try {
+                            if (expectRawDumpBytesRemaining > 0) {
+                                val previewLen = minOf(64, r, expectRawDumpBytesRemaining)
+                                val preview = pkt.buffer.slice(pkt.received + beforeGot until pkt.received + beforeGot + previewLen)
+                                    .joinToString(" ") { String.format("%02x", it) }
+                                Log.i(TAGS, "RAW_DUMP remaining=${expectRawDumpBytesRemaining} read=${r} preview=$preview")
+                                expectRawDumpBytesRemaining -= r
+                                if (expectRawDumpBytesRemaining < 0) expectRawDumpBytesRemaining = 0
+                            }
+                        } catch (e: Exception) { /* ignore raw dump errors */ }
                         // copy the newly read bytes into recentBuf
                         try {
                             val start = pkt.received + beforeGot
@@ -654,6 +667,8 @@ class RtmpSession(
                     // kick diagnostics: log the next few chunk headers from this publisher
                     expectPostPublishHeaderCount = 8
                     expectPostPublishPayloadCount = 6
+                    // enable raw TCP dump for a short burst (bytes)
+                    expectRawDumpBytesRemaining = 1024
                     // attach any waiting players who tried to play before the publisher existed
                     val queued = waitingPlayers.remove(full)
                     if (queued != null) {
