@@ -59,6 +59,8 @@ class RtmpSession(
     private var lastPublishUsedAmf3: Boolean = false
     private var createdStreamSeen: Boolean = false
     private var connectMonitorJob: Job? = null
+    // temporary diagnostic: after a publish starts, log the next N chunk headers to see what the client sends
+    private var expectPostPublishHeaderCount: Int = 0
 
     fun run(): Job {
         return serverScope.launch {
@@ -174,6 +176,12 @@ class RtmpSession(
                     // diagnostic: log the parsed message header (fmt/cid/timestamp/length/type/streamId)
                     try {
                         Log.i(TAGS, "ChunkHdr fmt=$fmt cid=$cid ts=$timestamp len=$msgLength type=$msgType streamId=$msgStreamId")
+                        if (expectPostPublishHeaderCount > 0) {
+                            try {
+                                Log.i(TAGS, "POST_PUBLISH_HDR remaining=${expectPostPublishHeaderCount} fmt=$fmt cid=$cid ts=$timestamp len=$msgLength type=$msgType streamId=$msgStreamId")
+                            } catch (_: Exception) {}
+                            expectPostPublishHeaderCount -= 1
+                        }
                     } catch (e: Exception) { /* ignore */ }
 
                     // update header state
@@ -619,6 +627,8 @@ class RtmpSession(
                     sendRtmpMessage(18, pubStream, notif) // data message
                     // emit postPublish so other components (relay/trans) can react
                     NodeEventBus.emit("postPublish", sessionId, full, publishStreamKey)
+                    // kick diagnostics: log the next few chunk headers from this publisher
+                    expectPostPublishHeaderCount = 8
                     // attach any waiting players who tried to play before the publisher existed
                     val queued = waitingPlayers.remove(full)
                     if (queued != null) {
