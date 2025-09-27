@@ -26,6 +26,7 @@ class RtmpSession(
 
     var publishStreamId: Int = 0
     var playStreamId: Int = 0
+    var playStreamName: String? = null
     // ACK/window tracking
     private var ackWindowSize: Int = 0
     private var inBytesSinceStart: Long = 0L
@@ -266,6 +267,12 @@ class RtmpSession(
             s.players.remove(this)
         }
         RtmpServerState.unregisterSession(sessionId)
+        // emit donePlay if this session was a player
+        playStreamName?.let { ps ->
+            NodeEventBus.emit("donePlay", sessionId, ps, null)
+        }
+        // emit doneConnect like Node
+        NodeEventBus.emit("doneConnect", sessionId, mapOf("app" to appName))
         try { socket.close() } catch (ignored: Exception) {}
         // emit recent inbound bytes for debugging
         try {
@@ -455,6 +462,12 @@ class RtmpSession(
                     Log.i(TAGS, "AMF dump error: ${e.message}")
                 }
                 if (cmd is String) {
+                    // emit pre events like Node (supply the parsed AMF parser for listeners)
+                    when (cmd) {
+                        "connect" -> NodeEventBus.emit("preConnect", sessionId, amf)
+                        "publish" -> NodeEventBus.emit("prePublish", sessionId, amf)
+                        "play" -> NodeEventBus.emit("prePlay", sessionId, amf)
+                    }
                     // detect if the remaining args are AMF3-wrapped (AMF0 marker 0x11)
                         val useAmf3 = when (amf.nextMarker()) {
                             0x11 -> true
@@ -572,6 +585,7 @@ class RtmpSession(
                 Log.i(TAGS, "[session#$sessionId] publish scannedArgs=$scanned")
                 if (name != null) {
                     val full = "/$appName/$name"
+                    playStreamName = full
                     publishStreamName = full
                     isPublishing = true
                     streams[full] = this
