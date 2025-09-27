@@ -8,9 +8,11 @@ import java.nio.file.Paths
 
 object GoldenComparator {
     private const val TAG = "GoldenComparator"
+    // Comparator enabled by default. Set RTMP_GOLDEN_COMPARE=0 or "false" to explicitly disable.
     private val enabled: Boolean by lazy {
         val v = System.getenv("RTMP_GOLDEN_COMPARE")
-        v != null && (v == "1" || v.equals("true", true))
+        if (v == null) return@lazy true
+        !(v == "0" || v.equals("false", true))
     }
 
     // Optional: explicit opt-in to write diff files to disk. Default = false (no writes).
