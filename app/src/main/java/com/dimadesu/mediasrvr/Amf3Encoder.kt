@@ -14,22 +14,27 @@ class Amf3Encoder {
 
     private fun writeU29(v0: Int) {
         var v = v0
+        // Encode U29 in the same LSB-first style used by Node-Media-Server
+        // (produce 1-4 bytes, with continuation bits set per Node implementation)
         when {
             v < 0x80 -> out.write(v)
             v < 0x4000 -> {
-                out.write(((v shr 7) and 0x7f) or 0x80)
+                // 2 bytes: low 7 bits, then remaining bits with continuation bit
                 out.write(v and 0x7f)
+                out.write(((v shr 7) or 0x80) and 0xff)
             }
             v < 0x200000 -> {
-                out.write(((v shr 14) and 0x7f) or 0x80)
-                out.write(((v shr 7) and 0x7f) or 0x80)
+                // 3 bytes
                 out.write(v and 0x7f)
+                out.write(((v shr 7) and 0x7f))
+                out.write(((v shr 14) or 0x80) and 0xff)
             }
             else -> {
-                out.write(((v shr 22) and 0x7f) or 0x80)
-                out.write(((v shr 15) and 0x7f) or 0x80)
-                out.write(((v shr 8) and 0x7f) or 0x80)
+                // 4 bytes (last byte is full 8 bits)
                 out.write(v and 0xff)
+                out.write(((v shr 8) and 0x7f))
+                out.write(((v shr 15) or 0x7f) and 0xff)
+                out.write(((v shr 22) or 0x7f) and 0xff)
             }
         }
     }
@@ -57,7 +62,8 @@ class Amf3Encoder {
 
     private fun writeAmf3Integer(v: Int) {
         out.write(0x04)
-        writeU29(v and 0x1fffffff)
+        // Node-Media-Server masks with 0x3FFFFFFF before encoding to UI29
+        writeU29(v and 0x3fffffff)
     }
 
     private fun writeAmf3Double(d: Double) {
