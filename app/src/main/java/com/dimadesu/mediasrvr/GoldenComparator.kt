@@ -141,6 +141,13 @@ object GoldenComparator {
                         Log.i(TAG, "Golden structural AMF0 match: session#$sessionId cmd=$cmd golden=$goldenName values_match=true")
                         return
                     } else {
+                        // Try a normalized compare where known transId numeric slots are masked
+                        val nExp = normalizeAmfTopLevel(expStruct)
+                        val nAct = normalizeAmfTopLevel(actStruct)
+                        if (deepEqualAmfValues(nExp, nAct)) {
+                            Log.i(TAG, "Golden structural AMF0 match after normalization: session#$sessionId cmd=$cmd golden=$goldenName")
+                            return
+                        }
                         Log.i(TAG, "Golden structural AMF0 mismatch: session#$sessionId cmd=$cmd golden=$goldenName expected_values=${expStruct.take(8)} actual_values=${actStruct.take(8)}")
                     }
                 }
@@ -274,4 +281,30 @@ private fun deepEqualAmfValues(a: Any?, b: Any?): Boolean {
         return true
     }
     return false
+}
+
+// Normalize top-level AMF sequences by masking known transId numeric positions so
+// semantic comparisons ignore transaction-id differences between client and server.
+private fun normalizeAmfTopLevel(list: List<Any?>): List<Any?> {
+    if (list.isEmpty()) return list
+    val out = list.toMutableList()
+    try {
+        val first = out[0]
+        if (first is String) {
+            when (first) {
+                "_result", "_error" -> {
+                    if (out.size > 1 && out[1] is Number) out[1] = 0.0
+                }
+                "createStream" -> {
+                    // client createStream transId often 3.0 vs server _result uses 2.0 — mask second slot
+                    if (out.size > 1 && out[1] is Number) out[1] = 0.0
+                }
+                "publish" -> {
+                    if (out.size > 1 && out[1] is Number) out[1] = 0.0
+                }
+                else -> { /* no-op */ }
+            }
+        }
+    } catch (_: Exception) { }
+    return out
 }
