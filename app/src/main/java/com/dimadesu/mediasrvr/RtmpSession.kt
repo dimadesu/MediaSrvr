@@ -625,6 +625,21 @@ class RtmpSession(
                         if (goldenResp != null) GoldenComparator.compare(sessionId, "onStatus", goldenResp, notif)
                     } catch (e: Exception) { Log.i(TAGS, "Golden comparator (outbound) error: ${e.message}") }
                     sendRtmpMessage(18, pubStream, notif) // data message
+                    // Send User Control StreamBegin to the publisher (event type 0 + streamId)
+                    try {
+                        val sb = ByteArray(6)
+                        sb[0] = 0
+                        sb[1] = 0
+                        val sid = pubStream
+                        sb[2] = ((sid shr 24) and 0xff).toByte()
+                        sb[3] = ((sid shr 16) and 0xff).toByte()
+                        sb[4] = ((sid shr 8) and 0xff).toByte()
+                        sb[5] = (sid and 0xff).toByte()
+                        sendRtmpMessage(4, 0, sb)
+                        Log.i(TAGS, "Sent StreamBegin to publisher streamId=$pubStream")
+                    } catch (e: Exception) {
+                        Log.i(TAGS, "Error sending StreamBegin to publisher: ${e.message}")
+                    }
                     // emit postPublish so other components (relay/trans) can react
                     NodeEventBus.emit("postPublish", sessionId, full, publishStreamKey)
                     // kick diagnostics: log the next few chunk headers from this publisher
@@ -642,6 +657,18 @@ class RtmpSession(
                                 // notify player
                                 val pn = buildOnStatus("status", "NetStream.Play.Start", "Playing")
                                 p.sendRtmpMessage(18, p.playStreamId, pn)
+                                // send StreamBegin to the player as Node does
+                                try {
+                                    val sbp = ByteArray(6)
+                                    sbp[0] = 0
+                                    sbp[1] = 0
+                                    val psid = p.playStreamId
+                                    sbp[2] = ((psid shr 24) and 0xff).toByte()
+                                    sbp[3] = ((psid shr 16) and 0xff).toByte()
+                                    sbp[4] = ((psid shr 8) and 0xff).toByte()
+                                    sbp[5] = (psid and 0xff).toByte()
+                                    p.sendRtmpMessage(4, 0, sbp)
+                                } catch (e: Exception) { Log.i(TAGS, "Error sending StreamBegin to queued player: ${e.message}") }
                                 // send cached metadata first (matches Node-Media-Server ordering), then sequence headers
                                 this.metaData?.let { md ->
                                     p.sendRtmpMessage(18, p.playStreamId, md)
