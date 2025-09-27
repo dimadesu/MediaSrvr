@@ -39,12 +39,7 @@ class RtmpServerService : Service() {
         } catch (e: Exception) {
             Log.i(TAG, "GoldenComparator init failed: ${e.message}")
         }
-        // Initialize Node-style adapters (relay/trans/fission listeners)
-        try {
-            NodeAdapters.init(this)
-        } catch (e: Exception) {
-            Log.i(TAG, "NodeAdapters init failed: ${e.message}")
-        }
+        // No relay/transcode adapters by default (not required)
         startForegroundCompat()
         startServer()
     }
