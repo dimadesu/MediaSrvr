@@ -13,6 +13,17 @@ class InPacket(var totalLength: Int, var type: Int, var streamId: Int) {
     var ackWindow: Int = 0
 }
 
+/**
+ * CompletedPacket is a typed representation of a fully reassembled RTMP message.
+ */
+data class CompletedPacket(
+    val type: Int,
+    val streamId: Int,
+    val timestamp: Int,
+    val payload: ByteArray,
+    val header: HeaderState
+)
+
 object RtmpTypes {
     const val TYPE_CHUNK_SIZE = 1
     const val TYPE_ACK = 3

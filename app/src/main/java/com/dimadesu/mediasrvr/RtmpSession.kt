@@ -219,20 +219,20 @@ class RtmpSession(
                         sendRtmpMessage(3, 0, ackBuf)
                     }
 
-                    // if message complete, hand to session logic
-                    if (cs.isComplete()) {
+                    // if message complete, hand to session logic using CompletedPacket
+                    val cp = cs.getCompletedPacketIfComplete(timestamp)
+                    if (cp != null) {
                         if (expectPostPublishPayloadCount > 0) {
                             try {
-                                val previewLen = minOf(64, cs.pkt.totalLength)
-                                val preview = cs.pkt.buffer.take(previewLen).joinToString(" ") { String.format("%02x", it) }
-                                Log.i(TAGS, "POST_PUBLISH_PAYLOAD remaining=${expectPostPublishPayloadCount} type=${cs.pkt.type} streamId=${cs.pkt.streamId} len=${cs.pkt.totalLength} preview=$preview")
+                                val previewLen = minOf(64, cp.payload.size)
+                                val preview = cp.payload.take(previewLen).joinToString(" ") { String.format("%02x", it) }
+                                Log.i(TAGS, "POST_PUBLISH_PAYLOAD remaining=${expectPostPublishPayloadCount} type=${cp.type} streamId=${cp.streamId} len=${cp.payload.size} preview=$preview")
                             } catch (_: Exception) { }
                             expectPostPublishPayloadCount -= 1
                         }
-                        val full = cs.pkt.buffer
                         // call the original handler
-                        handleMessage(cs.pkt.type, cs.pkt.streamId, timestamp, full)
-                        // reset chunk stream packet
+                        handleMessage(cp.type, cp.streamId, cp.timestamp, cp.payload)
+                        // reset chunk stream state
                         chunkStreams.remove(cid)
                     }
                 }

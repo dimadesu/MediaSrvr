@@ -110,20 +110,25 @@ class RtmpChunkStream(val cid: Int, private val session: RtmpSession? = null, pr
 
     fun isComplete(): Boolean = pkt.received >= pkt.totalLength
 
+    fun getCompletedPacketIfComplete(timestamp: Int): CompletedPacket? {
+        if (!isComplete()) return null
+        val cp = CompletedPacket(pkt.type, pkt.streamId, timestamp, pkt.buffer, header.copy())
+        // reset packet state so subsequent messages will allocate fresh buffers
+        pkt = InPacket(0, 0, 0)
+        return cp
+    }
+
     fun deliverIfComplete(timestamp: Int) {
-        if (!isComplete()) return
+        val cp = getCompletedPacketIfComplete(timestamp) ?: return
         try {
-            // prefer callback if provided (makes unit testing easier), otherwise call session
             if (onComplete != null) {
-                onComplete.invoke(pkt.type, pkt.streamId, timestamp, pkt.buffer)
+                onComplete.invoke(cp.type, cp.streamId, cp.timestamp, cp.payload)
             } else {
-                session?.processCompletedPacket(pkt.type, pkt.streamId, timestamp, pkt.buffer)
+                session?.processCompletedPacket(cp.type, cp.streamId, cp.timestamp, cp.payload)
             }
         } catch (e: Exception) {
             // session will log
         }
-        // reset packet state so subsequent messages will allocate fresh buffers
-        pkt = InPacket(0, 0, 0)
     }
 
     /**
