@@ -33,6 +33,8 @@ class RtmpServerService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        // pick up any pending delegate supplied by the app before the Service was created
+        try { delegate = pendingDelegate } catch (_: Exception) {}
         // initialize comparator with app context so it can read bundled asset goldens
         try {
             GoldenComparator.init(this)
@@ -149,6 +151,11 @@ class RtmpServerService : Service() {
     // Optional external delegate that can receive higher-level server events
     // (set by the hosting application to integrate with UI or other components)
     var delegate: RtmpServerDelegate? = null
+
+    companion object {
+        @JvmStatic
+        var pendingDelegate: RtmpServerDelegate? = null
+    }
 
     // Global registry of streams -> publisher session
     private val streams = mutableMapOf<String, RtmpSession>()

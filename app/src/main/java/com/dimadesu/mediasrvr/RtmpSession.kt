@@ -116,83 +116,25 @@ class RtmpSession(
                         cid = 64 + b1 + (b2 shl 8)
                     }
 
-                    // read message header according to fmt, using last header state when required
+                    // read message header according to fmt using the chunk stream helper
                     val prevHeader = chunkStreams[cid]?.header
-                    var timestamp = 0
-                    var msgLength = 0
-                    var msgType = 0
-                    var msgStreamId = 0
-
-                    if (fmt == 0) {
-                        // 11 bytes
-                        val buf = ByteArray(11)
-                        input.readFully(buf)
-                        timestamp = ((buf[0].toInt() and 0xff) shl 16) or
-                                ((buf[1].toInt() and 0xff) shl 8) or
-                                (buf[2].toInt() and 0xff)
-                        msgLength = ((buf[3].toInt() and 0xff) shl 16) or
-                                ((buf[4].toInt() and 0xff) shl 8) or
-                                (buf[5].toInt() and 0xff)
-                        msgType = buf[6].toInt() and 0xff
-                        msgStreamId = (buf[7].toInt() and 0xff) or
-                                ((buf[8].toInt() and 0xff) shl 8) or
-                                ((buf[9].toInt() and 0xff) shl 16) or
-                                ((buf[10].toInt() and 0xff) shl 24)
-                    } else if (fmt == 1) {
-                        val buf = ByteArray(7)
-                        input.readFully(buf)
-                        timestamp = ((buf[0].toInt() and 0xff) shl 16) or
-                                ((buf[1].toInt() and 0xff) shl 8) or
-                                (buf[2].toInt() and 0xff)
-                        msgLength = ((buf[3].toInt() and 0xff) shl 16) or
-                                ((buf[4].toInt() and 0xff) shl 8) or
-                                (buf[5].toInt() and 0xff)
-                        msgType = buf[6].toInt() and 0xff
-                        if (prevHeader != null) {
-                            msgStreamId = prevHeader.streamId
-                        }
-                    } else if (fmt == 2) {
-                        val buf = ByteArray(3)
-                        input.readFully(buf)
-                        timestamp = ((buf[0].toInt() and 0xff) shl 16) or
-                                ((buf[1].toInt() and 0xff) shl 8) or
-                                (buf[2].toInt() and 0xff)
-                        if (prevHeader != null) {
-                            msgLength = prevHeader.length
-                            msgType = prevHeader.type
-                            msgStreamId = prevHeader.streamId
-                        }
-                    } else { // fmt == 3
-                        if (prevHeader != null) {
-                            timestamp = prevHeader.timestamp
-                            msgLength = prevHeader.length
-                            msgType = prevHeader.type
-                            msgStreamId = prevHeader.streamId
-                        } else {
-                            Log.e(TAGS, "fmt=3 with no previous header for cid=$cid")
-                            continue
-                        }
+                    val cs = chunkStreams.getOrPut(cid) { RtmpChunkStream(cid, this@RtmpSession) }
+                    val timestamp = try {
+                        cs.readAndUpdateHeader(fmt, input, prevHeader)
+                    } catch (e: Exception) {
+                        Log.e(TAGS, "Error reading chunk header for cid=$cid fmt=$fmt: ${e.message}")
+                        continue
                     }
-
-                    // extended timestamp
-                    if (timestamp == 0xffffff) {
-                        timestamp = input.readInt()
-                    }
-
                     // diagnostic: log the parsed message header (fmt/cid/timestamp/length/type/streamId)
                     try {
-                        Log.i(TAGS, "ChunkHdr fmt=$fmt cid=$cid ts=$timestamp len=$msgLength type=$msgType streamId=$msgStreamId")
+                        Log.i(TAGS, "ChunkHdr fmt=$fmt cid=$cid ts=${cs.header.timestamp} len=${cs.header.length} type=${cs.header.type} streamId=${cs.header.streamId}")
                         if (expectPostPublishHeaderCount > 0) {
                             try {
-                                Log.i(TAGS, "POST_PUBLISH_HDR remaining=${expectPostPublishHeaderCount} fmt=$fmt cid=$cid ts=$timestamp len=$msgLength type=$msgType streamId=$msgStreamId")
+                                Log.i(TAGS, "POST_PUBLISH_HDR remaining=${expectPostPublishHeaderCount} fmt=$fmt cid=$cid ts=${cs.header.timestamp} len=${cs.header.length} type=${cs.header.type} streamId=${cs.header.streamId}")
                             } catch (_: Exception) {}
                             expectPostPublishHeaderCount -= 1
                         }
                     } catch (e: Exception) { /* ignore */ }
-
-                    // update or create chunk stream helper
-                    val cs = chunkStreams.getOrPut(cid) { RtmpChunkStream(cid, this@RtmpSession) }
-                    cs.updateHeader(timestamp, msgLength, msgType, msgStreamId)
 
                     // read chunk payload (could be partial)
                     val toRead = cs.getChunkDataSize(inChunkSize)
@@ -481,9 +423,11 @@ class RtmpSession(
                                 } catch (_: Exception) { }
                                     lastMediaTimestampMs = System.currentTimeMillis()
                                     publishMonitorJob?.cancel()
-                                    // notify delegate about sequence header (as audio buffer)
+                                    // notify delegate about sequence header (with parsed metadata)
                                     try {
-                                        delegate?.onAudioBuffer(sessionId, aacSequenceHeader!!)
+                                        val info = try { AvUtils.parseAacSequenceHeader(aacSequenceHeader!!) } catch (_: Exception) { null }
+                                        val meta = AudioMetadata(true, 10, info?.profile, info?.sampleRate, info?.channels)
+                                        delegate?.onAudioBuffer(sessionId, aacSequenceHeader!!, meta)
                                     } catch (_: Exception) { }
                             }
                         } else if (type == 9 && payload.isNotEmpty()) {
@@ -503,10 +447,12 @@ class RtmpSession(
                                     } catch (_: Exception) { }
                                         lastMediaTimestampMs = System.currentTimeMillis()
                                         publishMonitorJob?.cancel()
-                                        // notify delegate about sequence header (as video buffer)
-                                        try {
-                                            delegate?.onVideoBuffer(sessionId, avcSequenceHeader!!)
-                                        } catch (_: Exception) { }
+                                    // notify delegate about sequence header (with parsed metadata)
+                                    try {
+                                        val info = try { AvUtils.parseAvcSequenceHeader(avcSequenceHeader!!) } catch (_: Exception) { null }
+                                        val meta = VideoMetadata(true, 7, 0, info?.profile, info?.level, info?.width, info?.height)
+                                        delegate?.onVideoBuffer(sessionId, avcSequenceHeader!!, meta)
+                                    } catch (_: Exception) { }
                                 }
                             }
                         }
@@ -514,10 +460,20 @@ class RtmpSession(
                         Log.i(TAGS, "Error detecting sequence header: ${e.message}")
                     }
                     forwardToPlayers(type, timestamp, payload)
-                    // notify delegate of raw media frames as well
+                    // notify delegate of raw media frames as well (provide best-effort metadata)
                     try {
-                        if (type == 8) delegate?.onAudioBuffer(sessionId, payload)
-                        if (type == 9) delegate?.onVideoBuffer(sessionId, payload)
+                        if (type == 8) {
+                            val soundFormat = if (payload.isNotEmpty()) ((payload[0].toInt() shr 4) and 0x0f) else -1
+                            val isSeq = (soundFormat == 10 && payload.size > 1 && payload[1].toInt() == 0)
+                            val meta = if (soundFormat >= 0) AudioMetadata(isSeq, soundFormat) else null
+                            delegate?.onAudioBuffer(sessionId, payload, meta)
+                        }
+                        if (type == 9) {
+                            val codecId = if (payload.isNotEmpty()) (payload[0].toInt() and 0x0f) else -1
+                            val avcPacketType = if (payload.size > 1) (payload[1].toInt() and 0xff) else null
+                            val meta = if (codecId >= 0) VideoMetadata(avcPacketType == 0, codecId, avcPacketType) else null
+                            delegate?.onVideoBuffer(sessionId, payload, meta)
+                        }
                     } catch (_: Exception) { }
                 }
             }

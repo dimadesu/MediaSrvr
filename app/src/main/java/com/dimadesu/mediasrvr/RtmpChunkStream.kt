@@ -21,6 +21,77 @@ class RtmpChunkStream(val cid: Int, private val session: RtmpSession? = null, pr
         }
     }
 
+    /**
+     * Read the RTMP message header for the provided fmt from the input stream and update
+     * this chunk stream's header/pkt accordingly. Returns the resolved timestamp value.
+     *
+     * The method expects the session to have already read the basic header byte(s) and
+     * resolved fmt and cid. "prev" is the previous HeaderState for fmt=1/2/3 fallbacks.
+     */
+    fun readAndUpdateHeader(fmt: Int, input: java.io.DataInputStream, prev: HeaderState?): Int {
+        var timestamp = 0
+        var msgLength = 0
+        var msgType = 0
+        var msgStreamId = 0
+
+        if (fmt == 0) {
+            val buf = ByteArray(11)
+            input.readFully(buf)
+            timestamp = ((buf[0].toInt() and 0xff) shl 16) or
+                    ((buf[1].toInt() and 0xff) shl 8) or
+                    (buf[2].toInt() and 0xff)
+            msgLength = ((buf[3].toInt() and 0xff) shl 16) or
+                    ((buf[4].toInt() and 0xff) shl 8) or
+                    (buf[5].toInt() and 0xff)
+            msgType = buf[6].toInt() and 0xff
+            msgStreamId = (buf[7].toInt() and 0xff) or
+                    ((buf[8].toInt() and 0xff) shl 8) or
+                    ((buf[9].toInt() and 0xff) shl 16) or
+                    ((buf[10].toInt() and 0xff) shl 24)
+        } else if (fmt == 1) {
+            val buf = ByteArray(7)
+            input.readFully(buf)
+            timestamp = ((buf[0].toInt() and 0xff) shl 16) or
+                    ((buf[1].toInt() and 0xff) shl 8) or
+                    (buf[2].toInt() and 0xff)
+            msgLength = ((buf[3].toInt() and 0xff) shl 16) or
+                    ((buf[4].toInt() and 0xff) shl 8) or
+                    (buf[5].toInt() and 0xff)
+            msgType = buf[6].toInt() and 0xff
+            if (prev != null) msgStreamId = prev.streamId
+        } else if (fmt == 2) {
+            val buf = ByteArray(3)
+            input.readFully(buf)
+            timestamp = ((buf[0].toInt() and 0xff) shl 16) or
+                    ((buf[1].toInt() and 0xff) shl 8) or
+                    (buf[2].toInt() and 0xff)
+            if (prev != null) {
+                msgLength = prev.length
+                msgType = prev.type
+                msgStreamId = prev.streamId
+            }
+        } else { // fmt == 3
+            if (prev != null) {
+                timestamp = prev.timestamp
+                msgLength = prev.length
+                msgType = prev.type
+                msgStreamId = prev.streamId
+            } else {
+                throw java.io.IOException("fmt=3 with no previous header for cid=$cid")
+            }
+        }
+
+        // extended timestamp
+        if (timestamp == 0xffffff) {
+            val ext = input.readInt()
+            timestamp = ext
+        }
+
+        // update header state and packet allocation
+        updateHeader(timestamp, msgLength, msgType, msgStreamId)
+        return timestamp
+    }
+
     fun getChunkDataSize(inChunkSize: Int): Int {
         val remain = pkt.totalLength - pkt.received
         if (remain <= 0) return 0

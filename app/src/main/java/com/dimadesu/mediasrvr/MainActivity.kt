@@ -54,6 +54,8 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             val ctx = androidx.compose.ui.platform.LocalContext.current
             Button(onClick = {
+                // provide an example delegate to the service before starting it
+                RtmpServerService.pendingDelegate = ExampleRtmpServerDelegate()
                 val intent = Intent(ctx, RtmpServerService::class.java)
                 ctx.startForegroundService(intent)
             }) {

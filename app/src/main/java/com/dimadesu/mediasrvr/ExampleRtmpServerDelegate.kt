@@ -23,10 +23,10 @@ class ExampleRtmpServerDelegate(private val previewBytes: Int = 32, private val 
         Log.i(TAG, "onPublishStop session=$sessionId stream=$streamKey reason=$reason")
     }
 
-    override fun onVideoBuffer(sessionId: Int, sampleBytes: ByteArray) {
+    override fun onVideoBuffer(sessionId: Int, sampleBytes: ByteArray, meta: VideoMetadata?) {
         try {
             val preview = sampleBytes.take(previewBytes).joinToString(" ") { String.format("%02x", it) }
-            Log.i(TAG, "onVideoBuffer session=$sessionId len=${sampleBytes.size} preview=$preview")
+            Log.i(TAG, "onVideoBuffer session=$sessionId len=${sampleBytes.size} preview=$preview meta=$meta")
         } catch (e: Exception) {
             Log.i(TAG, "onVideoBuffer (preview failed): ${e.message}")
         }
@@ -36,10 +36,10 @@ class ExampleRtmpServerDelegate(private val previewBytes: Int = 32, private val 
         }
     }
 
-    override fun onAudioBuffer(sessionId: Int, sampleBytes: ByteArray) {
+    override fun onAudioBuffer(sessionId: Int, sampleBytes: ByteArray, meta: AudioMetadata?) {
         try {
             val preview = sampleBytes.take(previewBytes).joinToString(" ") { String.format("%02x", it) }
-            Log.i(TAG, "onAudioBuffer session=$sessionId len=${sampleBytes.size} preview=$preview")
+            Log.i(TAG, "onAudioBuffer session=$sessionId len=${sampleBytes.size} preview=$preview meta=$meta")
         } catch (e: Exception) {
             Log.i(TAG, "onAudioBuffer (preview failed): ${e.message}")
         }
