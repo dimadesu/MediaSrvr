@@ -458,6 +458,25 @@ class RtmpSession(
                             0x11 -> true
                             else -> false
                         }
+                    // optional: compare incoming payload against Node goldens for diagnostics
+                    try {
+                        if (GoldenComparator.isEnabled()) {
+                            // choose golden file name heuristically by command and AMF encoding
+                            val suffix = if (useAmf3) "amf3.hex" else "amf0.hex"
+                            val goldenName = when (cmd) {
+                                "connect" -> "connect_result_$suffix"
+                                "createStream" -> "create_stream_result_$suffix"
+                                "publish" -> "publish_$suffix"
+                                "onStatus", "onstatus" -> "onstatus_$suffix"
+                                else -> null
+                            }
+                            if (goldenName != null) {
+                                GoldenComparator.compare(sessionId, cmd, goldenName, payload)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.i(TAGS, "Golden comparator error: ${e.message}")
+                    }
                     handleCommand(cmd, amf, streamId, useAmf3)
                 }
             }
