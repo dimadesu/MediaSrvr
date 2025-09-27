@@ -1,0 +1,4 @@
+[submodule "inspiration/Node-Media-Server"]
+	path = inspiration/Node-Media-Server
+	url = https://github.com/illuspas/Node-Media-Server.git
+	branch = v2
