@@ -620,6 +620,21 @@ class RtmpSession(
                                 }
                                 val b64 = android.util.Base64.encodeToString(copy, android.util.Base64.NO_WRAP)
                                 Log.i(TAGS, "Publish monitor recent inbound base64(len=${len})=$b64")
+                                // Quick scan for obvious AV message type markers (0x08=audio, 0x09=video)
+                                try {
+                                    var audioMarkers = 0
+                                    var videoMarkers = 0
+                                    for (i in 0 until copy.size) {
+                                        val v = copy[i].toInt() and 0xff
+                                        if (v == 0x08) audioMarkers += 1
+                                        if (v == 0x09) videoMarkers += 1
+                                    }
+                                    val previewLen = minOf(200, copy.size)
+                                    val hexPreview = copy.take(previewLen).joinToString(" ") { String.format("%02x", it) }
+                                    Log.i(TAGS, "Publish monitor scan: audioMarkers=$audioMarkers videoMarkers=$videoMarkers hexPreview(len=${previewLen})=$hexPreview")
+                                } catch (e: Exception) {
+                                    Log.i(TAGS, "Error scanning recent inbound bytes: ${e.message}")
+                                }
                             } catch (e: Exception) {
                                 Log.i(TAGS, "Error in publish monitor dump: ${e.message}")
                             }
