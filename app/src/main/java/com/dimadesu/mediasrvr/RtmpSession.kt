@@ -791,9 +791,15 @@ class RtmpSession(
                     val pub = streams[full]
                     if (pub != null) {
                         pub.players.add(this)
-                        // set my local playStreamId to a newly allocated id for this session
-                        lastStreamIdAllocated += 1
-                        playStreamId = lastStreamIdAllocated
+                        // Use the client's message stream id for play responses (RTMP semantics)
+                        playStreamId = if (msgStreamId != 0) msgStreamId else {
+                            // fallback to allocating if none provided
+                            lastStreamIdAllocated += 1
+                            lastStreamIdAllocated
+                        }
+                        // record the stream name for cleanup and diagnostics
+                        playStreamName = full
+                        // update publisher session state (publisher is active)
                         RtmpServerState.updateSession(pub.sessionId, true, pub.publishStreamName)
                         Log.i(TAGS, "[session#$sessionId] Client joined as player for $full (publisher=#${pub.sessionId}) playStreamId=$playStreamId")
                         // send onStatus Play.Start
@@ -824,6 +830,9 @@ class RtmpSession(
                         }
                     } else {
                         Log.i(TAGS, "No publisher for $full — queuing player until publisher appears")
+                        // preserve the client's requested play stream id so publisher can reply on it later
+                        playStreamName = full
+                        if (msgStreamId != 0) playStreamId = msgStreamId
                         val q = waitingPlayers.getOrPut(full) { mutableListOf() }
                         q.add(this)
                     }
