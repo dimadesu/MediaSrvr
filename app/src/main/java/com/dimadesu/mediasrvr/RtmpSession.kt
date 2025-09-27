@@ -116,7 +116,7 @@ class RtmpSession(
                     }
 
                     // read message header according to fmt, using last header state when required
-                    val prev = headerStates[cid]
+                    val prevHeader = chunkStreams[cid]?.header
                     var timestamp = 0
                     var msgLength = 0
                     var msgType = 0
@@ -147,8 +147,8 @@ class RtmpSession(
                                 ((buf[4].toInt() and 0xff) shl 8) or
                                 (buf[5].toInt() and 0xff)
                         msgType = buf[6].toInt() and 0xff
-                        if (prev != null) {
-                            msgStreamId = prev.streamId
+                        if (prevHeader != null) {
+                            msgStreamId = prevHeader.streamId
                         }
                     } else if (fmt == 2) {
                         val buf = ByteArray(3)
@@ -156,17 +156,17 @@ class RtmpSession(
                         timestamp = ((buf[0].toInt() and 0xff) shl 16) or
                                 ((buf[1].toInt() and 0xff) shl 8) or
                                 (buf[2].toInt() and 0xff)
-                        if (prev != null) {
-                            msgLength = prev.length
-                            msgType = prev.type
-                            msgStreamId = prev.streamId
+                        if (prevHeader != null) {
+                            msgLength = prevHeader.length
+                            msgType = prevHeader.type
+                            msgStreamId = prevHeader.streamId
                         }
                     } else { // fmt == 3
-                        if (prev != null) {
-                            timestamp = prev.timestamp
-                            msgLength = prev.length
-                            msgType = prev.type
-                            msgStreamId = prev.streamId
+                        if (prevHeader != null) {
+                            timestamp = prevHeader.timestamp
+                            msgLength = prevHeader.length
+                            msgType = prevHeader.type
+                            msgStreamId = prevHeader.streamId
                         } else {
                             Log.e(TAGS, "fmt=3 with no previous header for cid=$cid")
                             continue
@@ -190,7 +190,7 @@ class RtmpSession(
                     } catch (e: Exception) { /* ignore */ }
 
                     // update or create chunk stream helper
-                    val cs = chunkStreams.getOrPut(cid) { RtmpChunkStream(cid, this) }
+                    val cs = chunkStreams.getOrPut(cid) { RtmpChunkStream(cid, this@RtmpSession) }
                     cs.updateHeader(timestamp, msgLength, msgType, msgStreamId)
 
                     // read chunk payload (could be partial)
