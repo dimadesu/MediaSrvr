@@ -620,18 +620,48 @@ class RtmpSession(
                                 }
                                 val b64 = android.util.Base64.encodeToString(copy, android.util.Base64.NO_WRAP)
                                 Log.i(TAGS, "Publish monitor recent inbound base64(len=${len})=$b64")
-                                // Quick scan for obvious AV message type markers (0x08=audio, 0x09=video)
+                                // Heuristic RTMP scan: try to locate RTMP basic headers and extract message-type
+                                // for chunks with fmt 0 or 1 (where the type byte is present).
                                 try {
-                                    var audioMarkers = 0
-                                    var videoMarkers = 0
-                                    for (i in 0 until copy.size) {
-                                        val v = copy[i].toInt() and 0xff
-                                        if (v == 0x08) audioMarkers += 1
-                                        if (v == 0x09) videoMarkers += 1
+                                    var audioCount = 0
+                                    var videoCount = 0
+                                    var dataCount = 0
+                                    val foundOffsets = mutableListOf<Int>()
+                                    var i = 0
+                                    while (i + 8 < copy.size) {
+                                        val b = copy[i].toInt() and 0xff
+                                        val fmt = (b shr 6) and 0x03
+                                        var cid = b and 0x3f
+                                        var basicLen = 1
+                                        if (cid == 0) {
+                                            if (i + 1 >= copy.size) break
+                                            cid = 64 + (copy[i + 1].toInt() and 0xff)
+                                            basicLen = 2
+                                        } else if (cid == 1) {
+                                            if (i + 2 >= copy.size) break
+                                            cid = 64 + (copy[i + 1].toInt() and 0xff) + ((copy[i + 2].toInt() and 0xff) shl 8)
+                                            basicLen = 3
+                                        }
+                                        // Only attempt to read type byte when fmt == 0 or 1 and we have enough bytes
+                                        if (fmt == 0 || fmt == 1) {
+                                            val typePos = i + basicLen + 6 // timestamp(3) + msgLen(3) then type
+                                            if (typePos < copy.size) {
+                                                val t = copy[typePos].toInt() and 0xff
+                                                when (t) {
+                                                    8 -> { audioCount += 1; foundOffsets.add(i) }
+                                                    9 -> { videoCount += 1; foundOffsets.add(i) }
+                                                    18 -> { dataCount += 1; foundOffsets.add(i) }
+                                                }
+                                                // Advance by at least basicLen to avoid re-detecting same header
+                                                i += basicLen
+                                                continue
+                                            }
+                                        }
+                                        i += 1
                                     }
                                     val previewLen = minOf(200, copy.size)
                                     val hexPreview = copy.take(previewLen).joinToString(" ") { String.format("%02x", it) }
-                                    Log.i(TAGS, "Publish monitor scan: audioMarkers=$audioMarkers videoMarkers=$videoMarkers hexPreview(len=${previewLen})=$hexPreview")
+                                    Log.i(TAGS, "Publish monitor RTMP scan: audio=$audioCount video=$videoCount data=$dataCount detections=${foundOffsets.size} hexPreview(len=${previewLen})=$hexPreview")
                                 } catch (e: Exception) {
                                     Log.i(TAGS, "Error scanning recent inbound bytes: ${e.message}")
                                 }
