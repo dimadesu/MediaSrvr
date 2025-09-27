@@ -52,6 +52,27 @@ object GoldenComparator {
         || (appContext != null)
 
     /**
+     * Resolve the first candidate golden filename that exists either on disk under goldenDir
+     * or in bundled assets/golden/. Returns the filename if found, otherwise null.
+     */
+    fun resolveExistingGoldenName(candidates: List<String>): String? {
+        for (name in candidates) {
+            try {
+                val f = File(goldenDir, name)
+                if (f.exists()) return name
+            } catch (_: Exception) { }
+            val ctx = appContext
+            if (ctx != null) {
+                try {
+                    ctx.assets.open("golden/$name").use { /* just checking existence */ }
+                    return name
+                } catch (_: Exception) { }
+            }
+        }
+        return null
+    }
+
+    /**
      * Compare an inbound invoke payload (raw RTMP message payload) against a golden file.
      * goldenName should be the filename under inspiration/golden (e.g. connect_result_amf0.hex)
      * By default this will not write to disk — it only logs a concise summary. Set RTMP_GOLDEN_DUMP=1
