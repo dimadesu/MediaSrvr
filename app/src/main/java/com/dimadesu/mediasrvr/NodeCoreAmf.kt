@@ -87,6 +87,53 @@ object NodeCoreAmf {
         return baos.toByteArray()
     }
 
+    fun amf0encArray(a: Any): ByteArray {
+        // Node: write marker 8 + 4-byte length then object bytes without leading object marker
+        val baos = java.io.ByteArrayOutputStream()
+        baos.write(0x08)
+        val l = when (a) {
+            is List<*> -> a.size
+            is Map<*, *> -> (a as Map<*, *>).size
+            else -> 0
+        }
+        val len = ByteArray(4)
+        len[0] = ((l shr 24) and 0xff).toByte()
+        len[1] = ((l shr 16) and 0xff).toByte()
+        len[2] = ((l shr 8) and 0xff).toByte()
+        len[3] = (l and 0xff).toByte()
+        baos.write(len)
+        // encode underlying object structure as AMF0 object and strip leading object marker
+        if (a is Map<*, *>) {
+            val objBytes = amf0encObject(a as Map<String, Any?>)
+            // strip the first byte (object type) and append rest
+            baos.write(objBytes.copyOfRange(1, objBytes.size))
+        } else if (a is List<*>) {
+            // convert list to object-like map with numeric keys? Node encodes arrays differently; fallback to strict array encoding appended
+            val arrBytes = amf0encSArray(a)
+            baos.write(arrBytes.copyOfRange(1, arrBytes.size))
+        }
+        return baos.toByteArray()
+    }
+
+    fun amf0encSArray(a: List<*>): ByteArray {
+        val baos = java.io.ByteArrayOutputStream()
+        baos.write(0x0A)
+        val count = a.size
+        val cnt = ByteArray(4)
+        cnt[0] = ((count shr 24) and 0xff).toByte()
+        cnt[1] = ((count shr 16) and 0xff).toByte()
+        cnt[2] = ((count shr 8) and 0xff).toByte()
+        cnt[3] = (count and 0xff).toByte()
+        baos.write(cnt)
+        for (e in a) baos.write(amf0EncodeOne(e))
+        return baos.toByteArray()
+    }
+
+    fun amf0markSArray(a: MutableList<Any?>): List<Any?> {
+        // mark with property for tests; Kotlin doesn't support property descriptor like JS, just return the list
+        return a
+    }
+
     fun amf0encLongString(str: String): ByteArray {
         val bs = str.toByteArray(Charsets.UTF_8)
         val out = ByteArray(5 + bs.size)
