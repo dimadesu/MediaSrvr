@@ -287,6 +287,38 @@ class RtmpSession(
     private fun cleanup() {
         // if publishing, remove from streams
         publishStreamName?.let { key ->
+            // notify players that the publisher is ending
+            try {
+                val pub = this
+                val notify = buildOnStatus("status", "NetStream.Unpublish.Notify", "Publisher ended")
+                val stopPub = buildOnStatus("status", "NetStream.Publish.Stop", "Stopped")
+                // send Unpublish.Notify to all attached players
+                for (p in players) {
+                    try {
+                        val outStreamId = if (p.playStreamId != 0) p.playStreamId else 1
+                        p.sendRtmpMessage(18, outStreamId, notify)
+                        // send StreamEOF user control to players
+                        val sbp = ByteArray(6)
+                        sbp[0] = 0
+                        sbp[1] = 1
+                        val psid = outStreamId
+                        sbp[2] = ((psid shr 24) and 0xff).toByte()
+                        sbp[3] = ((psid shr 16) and 0xff).toByte()
+                        sbp[4] = ((psid shr 8) and 0xff).toByte()
+                        sbp[5] = (psid and 0xff).toByte()
+                        p.sendRtmpMessage(4, 0, sbp)
+                    } catch (e: Exception) { /* ignore per-client errors */ }
+                }
+                // send Publish.Stop to the publisher session before removal
+                try {
+                    val pubStream = if (publishStreamId != 0) publishStreamId else 1
+                    sendRtmpMessage(18, pubStream, stopPub)
+                } catch (_: Exception) { }
+
+            } catch (e: Exception) {
+                Log.i(TAGS, "Error notifying players on publish end: ${e.message}")
+            }
+
             streams.remove(key)
             RtmpServerState.unregisterStream(key)
             // notify listeners that this publish has ended
@@ -1001,6 +1033,20 @@ class RtmpSession(
                 // if we were publishing, tidy up
                 if (isPublishing) {
                     publishStreamName?.let { key ->
+                        // notify attached players
+                        try {
+                            val notify = buildOnStatus("status", "NetStream.Unpublish.Notify", "Publisher ended")
+                            val stopPub = buildOnStatus("status", "NetStream.Publish.Stop", "Stopped")
+                            val pubStream = if (publishStreamId != 0) publishStreamId else 1
+                            for (p in players) {
+                                try {
+                                    val outStreamId = if (p.playStreamId != 0) p.playStreamId else 1
+                                    p.sendRtmpMessage(18, outStreamId, notify)
+                                } catch (_: Exception) { }
+                            }
+                            // send Publish.Stop to publisher
+                            sendRtmpMessage(18, pubStream, stopPub)
+                        } catch (_: Exception) { }
                         streams.remove(key)
                         RtmpServerState.unregisterStream(key)
                         NodeEventBus.emit("donePublish", sessionId, key, publishStreamKey)
@@ -1020,6 +1066,15 @@ class RtmpSession(
                     // best-effort cleanup if it matches our publishStreamId
                     if (sid is Double && sid.toInt() == publishStreamId) {
                         publishStreamName?.let { key ->
+                            try {
+                                val notify = buildOnStatus("status", "NetStream.Unpublish.Notify", "Publisher ended")
+                                val stopPub = buildOnStatus("status", "NetStream.Publish.Stop", "Stopped")
+                                val pubStream = if (publishStreamId != 0) publishStreamId else 1
+                                for (p in players) {
+                                    try { p.sendRtmpMessage(18, if (p.playStreamId != 0) p.playStreamId else 1, notify) } catch (_: Exception) {}
+                                }
+                                sendRtmpMessage(18, pubStream, stopPub)
+                            } catch (_: Exception) { }
                             streams.remove(key)
                             RtmpServerState.unregisterStream(key)
                             NodeEventBus.emit("donePublish", sessionId, key, publishStreamKey)
