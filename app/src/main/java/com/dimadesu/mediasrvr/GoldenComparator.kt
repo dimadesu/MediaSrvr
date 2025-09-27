@@ -114,6 +114,25 @@ object GoldenComparator {
                 return
             }
 
+            // If both appear to be AMF0 payloads (not AMF3 wrapper), try a structural AMF0 compare first.
+            try {
+                val expFirst = if (expected.isNotEmpty()) expected[0].toInt() and 0xff else -1
+                val actFirst = if (actual.isNotEmpty()) actual[0].toInt() and 0xff else -1
+                // AMF3 wrapper marker is 0x11; if neither starts with 0x11, attempt AMF0 structural compare
+                if (expFirst != 0x11 && actFirst != 0x11) {
+                    val expStruct = parseAmf0Sequence(expected)
+                    val actStruct = parseAmf0Sequence(actual)
+                    if (deepEqualAmfValues(expStruct, actStruct)) {
+                        Log.i(TAG, "Golden structural AMF0 match: session#$sessionId cmd=$cmd golden=$goldenName values_match=true")
+                        return
+                    } else {
+                        Log.i(TAG, "Golden structural AMF0 mismatch: session#$sessionId cmd=$cmd golden=$goldenName expected_values=${expStruct.take(8)} actual_values=${actStruct.take(8)}")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.i(TAG, "AMF0 structural compare error: ${e.message}")
+            }
+
             // Build a concise in-memory diff summary (no file IO by default)
             val maxPreview = 128
             val expPreview = expected.take(maxPreview).joinToString(" ") { String.format("%02x", it) }
@@ -200,4 +219,44 @@ private fun decodeHexIfAscii(expectedRaw: ByteArray): ByteArray {
         return expectedRaw
     }
     return out
+}
+
+// Parse a sequence of AMF0 values from a byte array using the existing Amf0Parser
+private fun parseAmf0Sequence(bytes: ByteArray): List<Any?> {
+    try {
+        val parser = com.dimadesu.mediasrvr.Amf0Parser(bytes)
+        val out = mutableListOf<Any?>()
+        while (true) {
+            val v = parser.readAmf0() ?: break
+            out.add(v)
+        }
+        return out
+    } catch (e: Exception) {
+        return emptyList()
+    }
+}
+
+// Deep-equal comparison for AMF0-decoded values (strings, numbers, booleans, maps, lists, nulls)
+private fun deepEqualAmfValues(a: Any?, b: Any?): Boolean {
+    if (a === b) return true
+    if (a == null || b == null) return a == b
+    if (a is Number && b is Number) return a.toDouble() == b.toDouble()
+    if (a is String && b is String) return a == b
+    if (a is Boolean && b is Boolean) return a == b
+    if (a is Map<*, *> && b is Map<*, *>) {
+        if (a.size != b.size) return false
+        for ((k, v) in a) {
+            if (!b.containsKey(k)) return false
+            if (!deepEqualAmfValues(v, b[k])) return false
+        }
+        return true
+    }
+    if (a is List<*> && b is List<*>) {
+        if (a.size != b.size) return false
+        for (i in a.indices) {
+            if (!deepEqualAmfValues(a[i], b[i])) return false
+        }
+        return true
+    }
+    return false
 }
