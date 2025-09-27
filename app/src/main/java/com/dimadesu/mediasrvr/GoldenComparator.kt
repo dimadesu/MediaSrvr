@@ -57,6 +57,21 @@ object GoldenComparator {
      */
     fun resolveExistingGoldenName(candidates: List<String>): String? {
         for (name in candidates) {
+            // prefer .bin variant when a .hex candidate is provided
+            val binName = if (name.endsWith(".hex")) name.substring(0, name.length - 4) + ".bin" else null
+            if (binName != null) {
+                try {
+                    val fbin = File(goldenDir, binName)
+                    if (fbin.exists()) return binName
+                } catch (_: Exception) { }
+                val ctxb = appContext
+                if (ctxb != null) {
+                    try {
+                        ctxb.assets.open("golden/$binName").use { }
+                        return binName
+                    } catch (_: Exception) { }
+                }
+            }
             try {
                 val f = File(goldenDir, name)
                 if (f.exists()) return name
