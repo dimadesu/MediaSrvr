@@ -599,6 +599,31 @@ class RtmpSession(
                         if (goldenResp != null) GoldenComparator.compare(sessionId, "onStatus", goldenResp, notif)
                     } catch (e: Exception) { Log.i(TAGS, "Golden comparator (outbound) error: ${e.message}") }
                     sendRtmpMessage(18, pubStream, notif) // data message
+                    // attach any waiting players who tried to play before the publisher existed
+                    val queued = waitingPlayers.remove(full)
+                    if (queued != null) {
+                        for (p in queued) {
+                            try {
+                                players.add(p)
+                                // allocate a playStreamId for this player session
+                                p.lastStreamIdAllocated += 1
+                                p.playStreamId = p.lastStreamIdAllocated
+                                Log.i(TAGS, "Attached queued player #${p.sessionId} to $full playStreamId=${p.playStreamId}")
+                                // notify player
+                                val pn = buildOnStatus("status", "NetStream.Play.Start", "Playing")
+                                p.sendRtmpMessage(18, p.playStreamId, pn)
+                                // send cached metadata first (matches Node-Media-Server ordering), then sequence headers
+                                this.metaData?.let { md ->
+                                    p.sendRtmpMessage(18, p.playStreamId, md)
+                                }
+                                this.aacSequenceHeader?.let { sh -> p.sendRtmpMessage(8, p.playStreamId, sh) }
+                                this.avcSequenceHeader?.let { sh -> p.sendRtmpMessage(9, p.playStreamId, sh) }
+                            } catch (e: Exception) {
+                                Log.e(TAGS, "Error attaching queued player", e)
+                            }
+                        }
+                    }
+
                     // start monitor: if no media frames or metadata arrive within N seconds, nudge and dump recent bytes
                     lastMediaTimestampMs = System.currentTimeMillis()
                     publishMonitorJob?.cancel()
@@ -606,7 +631,7 @@ class RtmpSession(
                         delay(5000)
                         val now = System.currentTimeMillis()
                         if (now - lastMediaTimestampMs >= 4000) {
-                            Log.i(TAGS, "No AV/data received from publisher session#$sessionId within timeout — dumping recent inbound bytes (log-only) and sending diagnostic onStatus")
+                            Log.i(TAGS, "No AV/data received from publisher session#${sessionId} within timeout — dumping recent inbound bytes (log-only) and sending diagnostic onStatus")
                             try {
                                 val len = if (recentFull) recentBuf.size else recentPos
                                 val copy = ByteArray(len)
@@ -716,30 +741,6 @@ class RtmpSession(
                                 Log.i(TAGS, "Sending diagnostic onStatus base64(len=${diag.size})=$db64")
                             } catch (e: Exception) { /* ignore */ }
                             sendRtmpMessage(18, pubStream, diag)
-                        }
-                    }
-                    // attach any waiting players who tried to play before the publisher existed
-                    val queued = waitingPlayers.remove(full)
-                    if (queued != null) {
-                        for (p in queued) {
-                            try {
-                                players.add(p)
-                                // allocate a playStreamId for this player session
-                                p.lastStreamIdAllocated += 1
-                                p.playStreamId = p.lastStreamIdAllocated
-                                Log.i(TAGS, "Attached queued player #${p.sessionId} to $full playStreamId=${p.playStreamId}")
-                                // notify player
-                                val pn = buildOnStatus("status", "NetStream.Play.Start", "Playing")
-                                p.sendRtmpMessage(18, p.playStreamId, pn)
-                                // send cached metadata first (matches Node-Media-Server ordering), then sequence headers
-                                this.metaData?.let { md ->
-                                    p.sendRtmpMessage(18, p.playStreamId, md)
-                                }
-                                this.aacSequenceHeader?.let { sh -> p.sendRtmpMessage(8, p.playStreamId, sh) }
-                                this.avcSequenceHeader?.let { sh -> p.sendRtmpMessage(9, p.playStreamId, sh) }
-                            } catch (e: Exception) {
-                                Log.e(TAGS, "Error attaching queued player", e)
-                            }
                         }
                     }
                 } else {
