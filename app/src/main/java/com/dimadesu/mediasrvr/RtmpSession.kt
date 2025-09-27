@@ -245,6 +245,17 @@ class RtmpSession(
                         if (cs.pkt.ackWindow > 0 && cs.pkt.bytesReadSinceStart - cs.pkt.lastAck >= cs.pkt.ackWindow) {
                             cs.pkt.lastAck = cs.pkt.bytesReadSinceStart
                             Log.i(TAGS, "Per-chunk ack threshold reached cid=$cid bytes=${cs.pkt.bytesReadSinceStart} ackWindow=${cs.pkt.ackWindow}")
+                            try {
+                                val ackVal = cs.pkt.lastAck
+                                val ackBuf = ByteArray(4)
+                                val v = ackVal
+                                ackBuf[0] = ((v shr 24) and 0xff).toByte()
+                                ackBuf[1] = ((v shr 16) and 0xff).toByte()
+                                ackBuf[2] = ((v shr 8) and 0xff).toByte()
+                                ackBuf[3] = (v and 0xff).toByte()
+                                sendRtmpMessage(3, 0, ackBuf)
+                                Log.i(TAGS, "Sent per-chunk ACK cid=$cid ack=${ackVal}")
+                            } catch (e: Exception) { Log.i(TAGS, "Error sending per-chunk ACK: ${e.message}") }
                         }
                     } catch (e: Exception) { /* ignore per-chunk ack counter errors */ }
 
