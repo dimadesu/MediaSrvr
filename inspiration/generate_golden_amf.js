@@ -83,16 +83,20 @@ const publish0 = core.encodeAmf0Cmd({
 writeHex("publish_amf0", publish0);
 
 // client-style connect AMF0 (used as inbound invoke payload from client)
-// typical client sends: [1.0, { app, tcUrl, flashVer, audioCodecs, videoCodecs, objectEncoding, ... }]
+// typical client sends: ['connect', transId, { app, tcUrl, flashVer, audioCodecs, videoCodecs, objectEncoding, ... }]
 try {
-  const connectClient = core.amf0Encode([1.0, {
-    app: "publish",
-    tcUrl: "rtmp://127.0.0.1:1935/publish",
-    flashVer: "FMLE/3.0 (compatible; FMSc/1.0)",
-    audioCodecs: 1024.0,
-    videoCodecs: 128.0,
-    objectEncoding: 0.0
-  }]);
+  const connectClient = core.amf0Encode([
+    "connect",
+    1.0,
+    {
+      app: "publish",
+      tcUrl: "rtmp://127.0.0.1:1935/publish",
+      flashVer: "FMLE/3.0 (compatible; FMSc/1.0)",
+      audioCodecs: 1024.0,
+      videoCodecs: 128.0,
+      objectEncoding: 0.0,
+    },
+  ]);
   writeHex("connect_amf0", connectClient);
 } catch (e) {
   console.warn("Skipping connect_amf0 generation:", e.message);
@@ -100,7 +104,7 @@ try {
 
 // client-style createStream AMF0 (client invoke payload)
 try {
-  const csClient = core.amf0Encode([3.0, null]);
+  const csClient = core.amf0Encode(["createStream", 3.0, null]);
   writeHex("create_stream_amf0", csClient);
 } catch (e) {
   console.warn("Skipping create_stream_amf0 generation:", e.message);
