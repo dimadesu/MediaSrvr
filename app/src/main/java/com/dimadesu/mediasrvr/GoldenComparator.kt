@@ -21,7 +21,19 @@ object GoldenComparator {
         v != null && (v == "1" || v.equals("true", true))
     }
 
-    private val goldenDir = Paths.get(System.getProperty("user.dir"), "inspiration", "golden").toFile()
+    // Allow explicit override of golden directory (useful when running on device/emulator)
+    private val goldenDir: File by lazy {
+        val explicit = System.getenv("RTMP_GOLDEN_PATH")
+        if (!explicit.isNullOrBlank()) {
+            val f = File(explicit)
+            Log.i(TAG, "GoldenComparator using RTMP_GOLDEN_PATH=$explicit")
+            return@lazy f
+        }
+        val f = Paths.get(System.getProperty("user.dir"), "inspiration", "golden").toFile()
+        Log.i(TAG, "GoldenComparator resolved goldenDir=${f.absolutePath}")
+        f
+    }
+
     private val diffDir = Paths.get(System.getProperty("user.dir"), "captures", "diffs").toFile()
 
     fun isEnabled(): Boolean = enabled && goldenDir.exists()
