@@ -33,6 +33,12 @@ class RtmpServerService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        // initialize comparator with app context so it can read bundled asset goldens
+        try {
+            GoldenComparator.init(this)
+        } catch (e: Exception) {
+            Log.i(TAG, "GoldenComparator init failed: ${e.message}")
+        }
         startForegroundCompat()
         startServer()
     }
