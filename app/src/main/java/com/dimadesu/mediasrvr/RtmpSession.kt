@@ -786,6 +786,35 @@ class RtmpSession(
                     try {
                         delegate?.onPublishStart(full, sessionId)
                     } catch (_: Exception) { }
+                    // Client sanity nudge: resend a few control messages (some clients react to these)
+                    try {
+                        // resend SetChunkSize (server->client)
+                        val setChunkPayload = ByteArray(4)
+                        setChunkPayload[0] = ((outChunkSize shr 24) and 0xff).toByte()
+                        setChunkPayload[1] = ((outChunkSize shr 16) and 0xff).toByte()
+                        setChunkPayload[2] = ((outChunkSize shr 8) and 0xff).toByte()
+                        setChunkPayload[3] = (outChunkSize and 0xff).toByte()
+                        sendRtmpMessage(1, 0, setChunkPayload)
+                        // resend Window Acknowledgement Size
+                        val windowAck = if (ackWindowSize > 0) ackWindowSize else (2 * 1024 * 1024)
+                        val winPayload = ByteArray(4)
+                        winPayload[0] = ((windowAck shr 24) and 0xff).toByte()
+                        winPayload[1] = ((windowAck shr 16) and 0xff).toByte()
+                        winPayload[2] = ((windowAck shr 8) and 0xff).toByte()
+                        winPayload[3] = (windowAck and 0xff).toByte()
+                        sendRtmpMessage(5, 0, winPayload)
+                        // resend Set Peer Bandwidth
+                        val pb = ByteArray(5)
+                        pb[0] = ((windowAck shr 24) and 0xff).toByte()
+                        pb[1] = ((windowAck shr 16) and 0xff).toByte()
+                        pb[2] = ((windowAck shr 8) and 0xff).toByte()
+                        pb[3] = (windowAck and 0xff).toByte()
+                        pb[4] = 2
+                        sendRtmpMessage(6, 0, pb)
+                        Log.i(TAGS, "Client sanity nudge sent: SetChunkSize/WindowAck/SetPeerBW")
+                    } catch (e: Exception) {
+                        Log.i(TAGS, "Error sending client sanity nudge: ${e.message}")
+                    }
                     // kick diagnostics: log the next few chunk headers from this publisher
                     // Increase diagnostic windows: more headers and payload previews for stubborn clients
                     expectPostPublishHeaderCount = 32
