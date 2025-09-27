@@ -681,12 +681,12 @@ class RtmpSession(
             "FCPublish" -> {
                 // Some clients send FCPublish before publish; reply with a minimal _result
                 val transId = amf.readAmf0() as? Double ?: 0.0
-                val respBaos = java.io.ByteArrayOutputStream()
-                respBaos.write(buildStringAmf("_result"))
-                respBaos.write(buildNumberAmf(transId))
-                // null
-                respBaos.write(5)
-                val resp = respBaos.toByteArray()
+                val respOpt = mapOf<String, Any?>(
+                    "cmd" to "_result",
+                    "transId" to transId,
+                    "cmdObj" to null
+                )
+                val resp = NodeCoreAmf.encodeAmf0Cmd(respOpt)
                 sendRtmpMessage(20, 0, resp)
                 Log.i(TAGS, "Handled FCPublish (trans=$transId)")
             }
@@ -852,47 +852,7 @@ class RtmpSession(
         }
     }
 
-    // build AMF0 encoded responses
-    private fun buildStringAmf(name: String): ByteArray {
-        val bs = name.toByteArray(Charsets.UTF_8)
-        val out = ByteArray(3 + bs.size)
-        out[0] = 2 // string marker
-        out[1] = ((bs.size shr 8) and 0xff).toByte()
-        out[2] = (bs.size and 0xff).toByte()
-        System.arraycopy(bs, 0, out, 3, bs.size)
-        return out
-    }
 
-    private fun buildNumberAmf(v: Double): ByteArray {
-        val out = ByteArray(9)
-        out[0] = 0
-        val bb = java.nio.ByteBuffer.allocate(8).putDouble(v).array()
-        System.arraycopy(bb, 0, out, 1, 8)
-        return out
-    }
-
-    private fun buildObjectAmf(map: Map<String, Any>): ByteArray {
-        val baos = java.io.ByteArrayOutputStream()
-        baos.write(3) // object marker
-        for ((k, v) in map) {
-            val keyb = k.toByteArray(Charsets.UTF_8)
-            baos.write((keyb.size shr 8) and 0xff)
-            baos.write(keyb.size and 0xff)
-            baos.write(keyb)
-            when (v) {
-                is String -> baos.write(buildStringAmf(v))
-                is Double -> baos.write(buildNumberAmf(v))
-                is Int -> baos.write(buildNumberAmf(v.toDouble()))
-                is Boolean -> baos.write(if (v) byteArrayOf(1, 1) else byteArrayOf(1, 0))
-                else -> baos.write(5) // null
-            }
-        }
-        // object end marker
-        baos.write(0)
-        baos.write(0)
-        baos.write(9)
-        return baos.toByteArray()
-    }
 
     private fun buildConnectResult(transId: Double): ByteArray {
         val opt = mapOf<String, Any?>(
