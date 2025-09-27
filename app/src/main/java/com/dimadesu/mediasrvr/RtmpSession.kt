@@ -463,10 +463,12 @@ class RtmpSession(
                         if (GoldenComparator.isEnabled()) {
                             // choose golden file name heuristically by command and AMF encoding
                             val suffix = if (useAmf3) "amf3.hex" else "amf0.hex"
-                            // Prefer client-sent payload goldens (e.g., connect_amf0.hex) where available.
+                            // For inbound payloads, only compare against client-payload-style goldens
+                            // (e.g. connect_amf0.hex). Server-response goldens (connect_result_*) are
+                            // compared when the server actually sends those responses.
                             val candidates = when (cmd) {
-                                "connect" -> listOf("connect_$suffix", "connect_result_$suffix")
-                                "createStream" -> listOf("create_stream_$suffix", "create_stream_result_$suffix")
+                                "connect" -> listOf("connect_$suffix")
+                                "createStream" -> listOf("create_stream_$suffix")
                                 "publish" -> listOf("publish_$suffix")
                                 "onStatus", "onstatus" -> listOf("onstatus_$suffix")
                                 else -> emptyList()
