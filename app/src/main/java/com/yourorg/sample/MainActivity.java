@@ -1,7 +1,7 @@
 package com.yourorg.sample;
 
 import android.os.AsyncTask;
-import android.support.v7.app.AppCompatActivity;
+import androidx.appcompat.app.AppCompatActivity;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
@@ -55,8 +55,8 @@ public class MainActivity extends AppCompatActivity {
             }).start();
         }
 
-        final Button buttonVersions = (Button) findViewById(R.id.btVersions);
-        final TextView textViewVersions = (TextView) findViewById(R.id.tvVersions);
+    final Button buttonVersions = findViewById(R.id.btVersions);
+    final TextView textViewVersions = findViewById(R.id.tvVersions);
 
         buttonVersions.setOnClickListener(new View.OnClickListener() {
             public void onClick(View v) {
