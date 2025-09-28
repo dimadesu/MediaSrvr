@@ -9,6 +9,11 @@ import android.widget.TextView;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.widget.Toast;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.SharedPreferences;
@@ -27,6 +32,12 @@ public class MainActivity extends AppCompatActivity {
 
     //We just want one instance of node running in the background.
     public static boolean _startedNodeAlready=false;
+
+    // If we need to request POST_NOTIFICATIONS, store nodeDir here until the user responds.
+    private String pendingNodeDir = null;
+    private static final int REQ_POST_NOTIFICATIONS = 1001;
+    // When true, we should request POST_NOTIFICATIONS when the activity is resumed
+    private boolean pendingRequestNotification = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -51,25 +62,64 @@ public class MainActivity extends AppCompatActivity {
 
                         saveLastUpdateTime();
                     }
-                    // Start foreground service so the node process has a persistent notification
-                    try {
-                        Intent svcIntent = new Intent(getApplicationContext(), NodeForegroundService.class);
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            getApplicationContext().startForegroundService(svcIntent);
-                        } else {
-                            getApplicationContext().startService(svcIntent);
+                    // Permission requests and service starts must happen on the UI thread.
+                    final String _nodeDirForUi = nodeDir;
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            // Before starting the foreground service, ensure we have notification permission (Android 13+/API 33+)
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                                    // permission already granted -> start service then node
+                                    startServiceAndNode(_nodeDirForUi);
+                                } else {
+                                    // mark that we need to request permission when the activity is resumed
+                                    pendingNodeDir = _nodeDirForUi;
+                                    pendingRequestNotification = true;
+                                }
+                            } else {
+                                // Older Android: no runtime notification permission required
+                                startServiceAndNode(_nodeDirForUi);
+                            }
                         }
-                    } catch (Exception e) {
-                        // Ignore failures starting the service; node can still be started.
-                        e.printStackTrace();
-                    }
-
-                    startNodeWithArguments(new String[]{"node",
-                            nodeDir+"/main.js"
                     });
                 }
             }).start();
         }
+
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (pendingRequestNotification && pendingNodeDir != null) {
+            pendingRequestNotification = false;
+            // Request notifications permission now that the activity is resumed and in foreground
+            ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_POST_NOTIFICATIONS);
+        }
+    }
+
+    // Helper to start the foreground service and then the node process
+    private void startServiceAndNode(String nodeDir) {
+        try {
+            Intent svcIntent = new Intent(getApplicationContext(), NodeForegroundService.class);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                getApplicationContext().startForegroundService(svcIntent);
+            } else {
+                getApplicationContext().startService(svcIntent);
+            }
+        } catch (Exception e) {
+            // Ignore failures starting the service; node can still be started.
+            e.printStackTrace();
+        }
+
+        // Start Node on a background thread so we don't block the UI thread
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                startNodeWithArguments(new String[]{"node", nodeDir + "/main.js"});
+            }
+        }).start();
 
     final Button buttonVersions = findViewById(R.id.btVersions);
     final android.widget.ListView listViewLogs = findViewById(R.id.lvLogs);
@@ -282,6 +332,44 @@ public class MainActivity extends AppCompatActivity {
         int read;
         while ((read = in.read(buffer)) != -1) {
             out.write(buffer, 0, read);
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQ_POST_NOTIFICATIONS) {
+            boolean granted = false;
+            if (grantResults != null && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                granted = true;
+            }
+
+            final String nodeDir = pendingNodeDir;
+            pendingNodeDir = null;
+
+            if (nodeDir == null) {
+                // nothing pending
+                return;
+            }
+
+            if (granted) {
+                // start foreground service and node
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        startServiceAndNode(nodeDir);
+                    }
+                });
+            } else {
+                // User denied notifications — show a toast and start node without foreground service
+                Toast.makeText(this, "Notification permission denied. Node will run without foreground notification.", Toast.LENGTH_LONG).show();
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        startNodeWithArguments(new String[]{"node", nodeDir + "/main.js"});
+                    }
+                }).start();
+            }
         }
     }
 
