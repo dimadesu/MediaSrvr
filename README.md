@@ -1,12 +1,23 @@
-# MediaSrvr. RTMP Media Server as Android app
+# MediaSrvr. RTMP Media Server Android App
 
-Run RTMP media server as an Android app.
-
-Android wrapper app around Node Media Server v2.
+Allows running RTMP media server as an Android app.
 
 Proof of concept works. Needs clean-up.
 
+Intended usage is mainly with [LifeStreamer](https://github.com/dimadesu/LifeStreamer) app, but can be used for anything you want really.
+
 Uses:
-- Node Media Server v2 https://github.com/illuspas/Node-Media-Server/tree/v2
-- Runs it using Node.js mobile for Android https://github.com/nodejs-mobile/nodejs-mobile
-- App is based on sample app https://github.com/nodejs-mobile/nodejs-mobile-samples/tree/master/android/native-gradle-node-folder
+- [Node Media Server v2](https://github.com/illuspas/Node-Media-Server/tree/v2).
+- Runs NMS using [Node.js mobile](https://github.com/nodejs-mobile/nodejs-mobile).
+- Project is based on [Node.js mobile sample app](https://github.com/nodejs-mobile/nodejs-mobile-samples/tree/master/android/native-gradle-node-folder) - needs a lot of updates.
+
+## How to install
+
+I plan to release APK files via [GitHub Releases](https://github.com/dimadesu/MediaSrvr/releases).
+
+When new version is realsed just open [GitHub Releases page](https://github.com/dimadesu/MediaSrvr/releases) on your Android device, download APK file and install.
+
+## My Other Projects
+
+- [LifeStreamer](https://github.com/dimadesu/LifeStreamer)
+- [Bond Bunny](https://github.com/dimadesu/bond-bunny)
