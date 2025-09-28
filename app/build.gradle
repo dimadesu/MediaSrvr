@@ -25,8 +25,25 @@ android {
             // Informative message during configuration; to enable native build, download and copy libnode/bin as described in README.md
             println "libnode prebuilt binaries not found in ${projectDir}/libnode/bin — skipping externalNativeBuild configuration."
         }
+        // Configure ABI filters dynamically based on available prebuilt libnode binaries
+        def availableAbis = []
+        def libnodeBinDir = file("${projectDir}/libnode/bin")
+        if (libnodeBinDir.exists()) {
+            libnodeBinDir.eachDir { dir ->
+                def candidate = new File(dir, 'libnode.so')
+                if (candidate.exists()) {
+                    availableAbis << dir.name
+                }
+            }
+        }
         ndk {
-            abiFilters "armeabi-v7a", "x86", "arm64-v8a", "x86_64"
+            if (availableAbis.size() > 0) {
+                // abiFilters accepts varargs; convert list to String[] explicitly
+                abiFilters availableAbis.toArray(new String[0])
+            } else {
+                // Fall back to common ABIs if no prebuilt binaries found
+                abiFilters "armeabi-v7a", "x86", "arm64-v8a", "x86_64"
+            }
         }
     }
     buildTypes {
