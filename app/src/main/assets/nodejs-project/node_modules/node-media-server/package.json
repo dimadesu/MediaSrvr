@@ -1,0 +1,40 @@
+{
+  "name": "node-media-server",
+  "version": "2.7.4",
+  "description": "A Node.js implementation of RTMP Server",
+  "bin": "bin/app.js",
+  "main": "src/node_media_server.js",
+  "scripts": {
+    "start": "node bin/app.js",
+    "test": "node test/test_run.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/illuspas/Node-Media-Server.git"
+  },
+  "keywords": [
+    "rtmp",
+    "flv",
+    "server"
+  ],
+  "author": "Chen Mingliang",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/illuspas/Node-Media-Server/issues"
+  },
+  "homepage": "https://github.com/illuspas/Node-Media-Server#readme",
+  "dependencies": {
+    "basic-auth-connect": "^1.1.0",
+    "chalk": "^4.1.2",
+    "dateformat": "^4.6.3",
+    "express": "^4.21.1",
+    "http2-express": "^1.0.0",
+    "lodash": "^4.17.21",
+    "minimist": "^1.2.8",
+    "mkdirp": "^2.1.6",
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=8.0.0"
+  }
+}

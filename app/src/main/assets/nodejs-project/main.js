@@ -1,7 +1,18 @@
-var http = require('http');
-var leftPad = require('left-pad');
-var versions_server = http.createServer( (request, response) => {
-  response.end('Versions: ' + JSON.stringify(process.versions) + ' left-pad: ' + leftPad(42, 5, '0'));
-});
-versions_server.listen(3000);
-console.log('The node project has started.');
+const NodeMediaServer = require('node-media-server');
+
+const config = {
+  rtmp: {
+    port: 1935,
+    chunk_size: 60000,
+    gop_cache: true,
+    ping: 30,
+    ping_timeout: 60
+  },
+  http: {
+    port: 8000,
+    allow_origin: '*'
+  }
+};
+
+var nms = new NodeMediaServer(config)
+nms.run();
