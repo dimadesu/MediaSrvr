@@ -1,4 +1,4 @@
-# MediaSrvr Android Media Server
+# MediaSrvr. RTMP Media Server as Android app
 
 Run RTMP media server as an Android app.
 
