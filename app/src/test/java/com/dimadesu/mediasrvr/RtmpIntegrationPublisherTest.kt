@@ -297,4 +297,75 @@ class RtmpIntegrationPublisherTest {
         val written2 = playerOutBaos.toByteArray()
         assertTrue(written2.isNotEmpty())
     }
+
+    @Test
+    fun testConnectControlFrameOrdering() {
+        // build a minimal connect AMF0 invoke payload: command 'connect', transId=1, cmdObj with app="app"
+        val cmd = NodeCoreAmf.amf0EncodeOne("connect")
+        val trans = NodeCoreAmf.amf0encNumber(1.0)
+        val obj = NodeCoreAmf.amf0encObject(mapOf("app" to "app"))
+        val payload = cmd + trans + obj
+
+        // create session with ByteArrayOutputStream to capture writes
+        val outBaos = java.io.ByteArrayOutputStream()
+        val out = java.io.DataOutputStream(outBaos)
+        val inStream = java.io.DataInputStream(java.io.ByteArrayInputStream(ByteArray(0)))
+        val streams = mutableMapOf<String, RtmpSession>()
+        val waiting = mutableMapOf<String, MutableList<RtmpSession>>()
+        val scope = CoroutineScope(Dispatchers.Default)
+        val sock = Socket()
+        // create a test subclass that avoids the production logging-heavy handleMessage
+        val sess = object : RtmpSession(99, sock, inStream, out, scope, streams, waiting, null) {
+            // expose a simple entry that parses the incoming AMF0 connect and performs the response
+            fun testHandleConnectInvoke(payload: ByteArray) {
+                // parse AMF0: first value is command string
+                val amf = Amf0Parser(payload)
+                val cmd = amf.readAmf0()
+                if (cmd is String && cmd == "connect") {
+                    // determine if AMF3 wrapper follows (not expected in this minimal test)
+                    val useAmf3 = when (amf.nextMarker()) { 0x11 -> true else -> false }
+                    // call the new helper to perform response sequence
+                    performConnectResponse(1.0, useAmf3)
+                }
+            }
+        }
+
+        // Call our test helper rather than production handleMessage to avoid Android Log usage
+        (sess as Any).javaClass.getMethod("testHandleConnectInvoke", ByteArray::class.java).invoke(sess, payload)
+
+        val written = outBaos.toByteArray()
+        // parse the outgoing wire to locate message type bytes in order
+        // simplistic scan: look for message type byte in RTMP message header (after basic + msg header 11)
+        val foundTypes = mutableListOf<Int>()
+        var idx = 0
+        while (idx + 1 < written.size) {
+            val b0 = written[idx].toInt() and 0xff
+            val fmt = (b0 shr 6) and 0x03
+            var cid = b0 and 0x3f
+            var basicLen = 1
+            if (cid == 0) { if (idx + 1 >= written.size) break; cid = 64 + (written[idx+1].toInt() and 0xff); basicLen = 2 }
+            else if (cid == 1) { if (idx + 2 >= written.size) break; cid = 64 + (written[idx+1].toInt() and 0xff) + ((written[idx+2].toInt() and 0xff) shl 8); basicLen = 3 }
+            val headerIdx = idx + basicLen
+            if (headerIdx + 11 <= written.size) {
+                val type = written[headerIdx + 6].toInt() and 0xff
+                foundTypes.add(type)
+                // advance past this message (assume no extended ts and payload encoded fully)
+                val msgLen = ((written[headerIdx + 3].toInt() and 0xff) shl 16) or ((written[headerIdx + 4].toInt() and 0xff) shl 8) or (written[headerIdx + 5].toInt() and 0xff)
+                val total = basicLen + 11 + msgLen
+                idx += total
+                continue
+            }
+            idx += 1
+        }
+
+        // We expect at least the control types 1,5,6 and then the invoke response 20 present in the output
+        assertTrue(foundTypes.contains(1))
+        assertTrue(foundTypes.contains(5))
+        assertTrue(foundTypes.contains(6))
+        assertTrue(foundTypes.contains(20))
+        // additionally assert that the first occurrence of 20 appears after all control frames
+        val first20 = foundTypes.indexOf(20)
+        val lastControl = maxOf(foundTypes.indexOf(1).let { if (it==-1) Int.MIN_VALUE else it }, foundTypes.indexOf(5).let { if (it==-1) Int.MIN_VALUE else it }, foundTypes.indexOf(6).let { if (it==-1) Int.MIN_VALUE else it })
+        assertTrue(first20 >= 0 && first20 > lastControl)
+    }
 }

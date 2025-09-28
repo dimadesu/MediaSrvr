@@ -622,57 +622,9 @@ open class RtmpSession(
                     val swfUrl = obj?.get("swfUrl")
                     Log.i(TAGS, "Connect summary: app=$appName tcUrl=${tcUrl} flashVer=${flashVer} objectEncoding=${objectEncoding} audioCodecs=${audioCodecs} videoCodecs=${videoCodecs} videoFunction=${videoFunction} pageUrl=${pageUrl} swfUrl=${swfUrl}")
                 } catch (e: Exception) { /* ignore */ }
-                // send _result for connect
+                // send _result for connect (use helper for easier testing)
                 val trans = transId
-                val resp = if (useAmf3) {
-                    Log.i(TAGS, "Using AMF3 response for connect (session#$sessionId)")
-                    RtmpServerState.recordAmf3Usage(sessionId)
-                    buildConnectResultAmf3(trans)
-                } else buildConnectResult(trans)
-                // Compare the outbound server response against the server-side golden (if present)
-                try {
-                    val suffixResp = if (useAmf3) "amf3.hex" else "amf0.hex"
-                    val candidatesResp = listOf("connect_result_$suffixResp")
-                    val goldenResp = GoldenComparator.resolveExistingGoldenName(candidatesResp)
-                    if (goldenResp != null) GoldenComparator.compare(sessionId, "connect_result", goldenResp, resp)
-                } catch (e: Exception) { Log.i(TAGS, "Golden comparator (outbound) error: ${e.message}") }
-                sendRtmpMessage(20, 0, resp)
-                // Advertise preferred outgoing chunk size and window sizes like Node-Media-Server
-                try {
-                    // prefer a larger outgoing chunk size for server->client pushes
-                    outChunkSize = 8192
-                    val setChunkPayload = ByteArray(4)
-                    setChunkPayload[0] = ((outChunkSize shr 24) and 0xff).toByte()
-                    setChunkPayload[1] = ((outChunkSize shr 16) and 0xff).toByte()
-                    setChunkPayload[2] = ((outChunkSize shr 8) and 0xff).toByte()
-                    setChunkPayload[3] = (outChunkSize and 0xff).toByte()
-                    sendRtmpMessage(1, 0, setChunkPayload) // Set Chunk Size
-                    Log.i(TAGS, "Sent SetChunkSize=$outChunkSize to client")
-
-                    // Window acknowledgement size (example: 2MB)
-                    val windowAck = 2 * 1024 * 1024
-                    val winPayload = ByteArray(4)
-                    winPayload[0] = ((windowAck shr 24) and 0xff).toByte()
-                    winPayload[1] = ((windowAck shr 16) and 0xff).toByte()
-                    winPayload[2] = ((windowAck shr 8) and 0xff).toByte()
-                    winPayload[3] = (windowAck and 0xff).toByte()
-                    sendRtmpMessage(5, 0, winPayload) // Window Acknowledgement Size
-                    Log.i(TAGS, "Sent WindowAckSize=${windowAck} to client")
-
-                    // Set Peer Bandwidth (4 bytes window + 1 byte flag). flag=2 (dynamic)
-                    val pb = ByteArray(5)
-                    pb[0] = ((windowAck shr 24) and 0xff).toByte()
-                    pb[1] = ((windowAck shr 16) and 0xff).toByte()
-                    pb[2] = ((windowAck shr 8) and 0xff).toByte()
-                    pb[3] = (windowAck and 0xff).toByte()
-                    pb[4] = 2
-                    sendRtmpMessage(6, 0, pb) // Set Peer Bandwidth
-                    Log.i(TAGS, "Sent SetPeerBandwidth window=${windowAck} flag=2 to client")
-                } catch (e: Exception) {
-                    Log.i(TAGS, "Error sending server-side control messages: ${e.message}")
-                }
-
-                Log.i(TAGS, "Handled connect, app=$appName")
+                performConnectResponse(trans, useAmf3)
                 // mirror Node-Media-Server: emit postConnect
                 NodeEventBus.emit("postConnect", sessionId, mapOf("app" to appName))
             }
@@ -1276,6 +1228,53 @@ open class RtmpSession(
             "info" to mapOf("level" to "status", "code" to "NetConnection.Connect.Success", "description" to "Connection succeeded.")
         )
         return NodeCoreAmf.encodeAmf0Cmd(opt)
+    }
+
+    // Helper to perform the standard connect response sequence (control frames then AMF _result).
+    internal fun performConnectResponse(transId: Double, useAmf3: Boolean) {
+        val resp = if (useAmf3) {
+            RtmpServerState.recordAmf3Usage(sessionId)
+            buildConnectResultAmf3(transId)
+        } else buildConnectResult(transId)
+
+        try {
+            outChunkSize = 8192
+            val setChunkPayload = ByteArray(4)
+            setChunkPayload[0] = ((outChunkSize shr 24) and 0xff).toByte()
+            setChunkPayload[1] = ((outChunkSize shr 16) and 0xff).toByte()
+            setChunkPayload[2] = ((outChunkSize shr 8) and 0xff).toByte()
+            setChunkPayload[3] = (outChunkSize and 0xff).toByte()
+            // send control frames first
+            sendRtmpMessage(1, 0, setChunkPayload)
+
+            val windowAck = 2 * 1024 * 1024
+            val winPayload = ByteArray(4)
+            winPayload[0] = ((windowAck shr 24) and 0xff).toByte()
+            winPayload[1] = ((windowAck shr 16) and 0xff).toByte()
+            winPayload[2] = ((windowAck shr 8) and 0xff).toByte()
+            winPayload[3] = (windowAck and 0xff).toByte()
+            sendRtmpMessage(5, 0, winPayload)
+
+            val pb = ByteArray(5)
+            pb[0] = ((windowAck shr 24) and 0xff).toByte()
+            pb[1] = ((windowAck shr 16) and 0xff).toByte()
+            pb[2] = ((windowAck shr 8) and 0xff).toByte()
+            pb[3] = (windowAck and 0xff).toByte()
+            pb[4] = 2
+            sendRtmpMessage(6, 0, pb)
+        } catch (e: Exception) {
+            Log.i(TAGS, "Error sending server-side control messages: ${e.message}")
+        }
+
+        // outbound golden compare (best-effort)
+        try {
+            val suffixResp = if (useAmf3) "amf3.hex" else "amf0.hex"
+            val candidatesResp = listOf("connect_result_$suffixResp")
+            val goldenResp = GoldenComparator.resolveExistingGoldenName(candidatesResp)
+            if (goldenResp != null) GoldenComparator.compare(sessionId, "connect_result", goldenResp, resp)
+        } catch (e: Exception) { Log.i(TAGS, "Golden comparator (outbound) error: ${e.message}") }
+
+        sendRtmpMessage(20, 0, resp)
     }
 
     // AMF3 encoded variants
