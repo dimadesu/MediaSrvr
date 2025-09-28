@@ -180,26 +180,13 @@ class RtmpSession(
 
                     // update per-chunk ack counters (Moblin-style fields on InPacket)
                     try {
+                        // update per-chunk counters for diagnostics; do not emit per-chunk ACKs here
                         cs.pkt.bytesReadSinceStart += got
-                        // initialize per-pkt ackWindow from session ackWindowSize when available
                         if (cs.pkt.ackWindow == 0 && ackWindowSize > 0) {
                             cs.pkt.ackWindow = ackWindowSize
                         }
-                        if (cs.pkt.ackWindow > 0 && cs.pkt.bytesReadSinceStart - cs.pkt.lastAck >= cs.pkt.ackWindow) {
-                            cs.pkt.lastAck = cs.pkt.bytesReadSinceStart
-                            Log.i(TAGS, "Per-chunk ack threshold reached cid=$cid bytes=${cs.pkt.bytesReadSinceStart} ackWindow=${cs.pkt.ackWindow}")
-                            try {
-                                val ackVal = cs.pkt.lastAck
-                                val ackBuf = ByteArray(4)
-                                val v = ackVal
-                                ackBuf[0] = ((v shr 24) and 0xff).toByte()
-                                ackBuf[1] = ((v shr 16) and 0xff).toByte()
-                                ackBuf[2] = ((v shr 8) and 0xff).toByte()
-                                ackBuf[3] = (v and 0xff).toByte()
-                                sendRtmpMessage(3, 0, ackBuf)
-                                Log.i(TAGS, "Sent per-chunk ACK cid=$cid ack=${ackVal}")
-                            } catch (e: Exception) { Log.i(TAGS, "Error sending per-chunk ACK: ${e.message}") }
-                        }
+                        // we intentionally do not send per-chunk ACK messages. The server will
+                        // use session-level Window Acknowledgement semantics (type 3) per spec.
                     } catch (e: Exception) { /* ignore per-chunk ack counter errors */ }
 
                     // update ack counters (session-level)
