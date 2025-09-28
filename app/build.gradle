@@ -7,8 +7,8 @@ android {
     buildToolsVersion "33.0.2"
     defaultConfig {
         applicationId "com.yourorg.sample"
-        minSdkVersion 21
-        targetSdkVersion 25
+    minSdkVersion 21
+    targetSdkVersion 33
         versionCode 1
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
@@ -51,6 +51,11 @@ android {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
+    }
+    // Use modern Java compatibility to avoid obsolete source/target warnings
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
     }
     // Configure CMake externally only when libnode binaries exist (see above)
     if (fileTree(dir: "${projectDir}/libnode/bin", include: '**/libnode.so').files.size() > 0) {
