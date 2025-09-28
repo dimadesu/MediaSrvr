@@ -7,6 +7,8 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
 import android.content.Context;
+import android.content.Intent;
+import android.os.Build;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.SharedPreferences;
@@ -49,6 +51,19 @@ public class MainActivity extends AppCompatActivity {
 
                         saveLastUpdateTime();
                     }
+                    // Start foreground service so the node process has a persistent notification
+                    try {
+                        Intent svcIntent = new Intent(getApplicationContext(), NodeForegroundService.class);
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            getApplicationContext().startForegroundService(svcIntent);
+                        } else {
+                            getApplicationContext().startService(svcIntent);
+                        }
+                    } catch (Exception e) {
+                        // Ignore failures starting the service; node can still be started.
+                        e.printStackTrace();
+                    }
+
                     startNodeWithArguments(new String[]{"node",
                             nodeDir+"/main.js"
                     });
@@ -155,6 +170,12 @@ public class MainActivity extends AppCompatActivity {
                 loggingActive[0] = false;
                 logHandler.removeCallbacks(logPoller[0]);
                 getApplication().unregisterActivityLifecycleCallbacks(this);
+                try {
+                    Intent svcIntent = new Intent(getApplicationContext(), NodeForegroundService.class);
+                    getApplicationContext().stopService(svcIntent);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
             }
         }
     });
