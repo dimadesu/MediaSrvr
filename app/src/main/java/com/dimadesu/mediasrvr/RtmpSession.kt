@@ -240,6 +240,18 @@ open class RtmpSession(
         }
     }
 
+    // helper to send user control events (type 4)
+    private fun sendUserControl(eventType: Int, streamId: Int) {
+        val buf = ByteArray(6)
+        buf[0] = ((eventType shr 8) and 0xff).toByte()
+        buf[1] = (eventType and 0xff).toByte()
+        buf[2] = ((streamId shr 24) and 0xff).toByte()
+        buf[3] = ((streamId shr 16) and 0xff).toByte()
+        buf[4] = ((streamId shr 8) and 0xff).toByte()
+        buf[5] = (streamId and 0xff).toByte()
+        sendRtmpMessage(4, 0, buf)
+    }
+
     private fun cleanup() {
         // if publishing, remove from streams
         publishStreamName?.let { key ->
@@ -254,15 +266,7 @@ open class RtmpSession(
                         val outStreamId = if (p.playStreamId != 0) p.playStreamId else 1
                         p.sendRtmpMessage(18, outStreamId, notify)
                         // send StreamEOF user control to players
-                        val sbp = ByteArray(6)
-                        sbp[0] = 0
-                        sbp[1] = 1
-                        val psid = outStreamId
-                        sbp[2] = ((psid shr 24) and 0xff).toByte()
-                        sbp[3] = ((psid shr 16) and 0xff).toByte()
-                        sbp[4] = ((psid shr 8) and 0xff).toByte()
-                        sbp[5] = (psid and 0xff).toByte()
-                        p.sendRtmpMessage(4, 0, sbp)
+                        p.sendUserControl(1, outStreamId)
                     } catch (e: Exception) { /* ignore per-client errors */ }
                 }
                 // send Publish.Stop to the publisher session before removal
@@ -362,14 +366,7 @@ open class RtmpSession(
                             if (payload.size >= 6) {
                                 val time = ((payload[2].toInt() and 0xff) shl 24) or ((payload[3].toInt() and 0xff) shl 16) or ((payload[4].toInt() and 0xff) shl 8) or (payload[5].toInt() and 0xff)
                                 // respond with PingResponse (event type 7)
-                                val resp = ByteArray(6)
-                                resp[0] = 0
-                                resp[1] = 7
-                                resp[2] = ((time shr 24) and 0xff).toByte()
-                                resp[3] = ((time shr 16) and 0xff).toByte()
-                                resp[4] = ((time shr 8) and 0xff).toByte()
-                                resp[5] = (time and 0xff).toByte()
-                                sendRtmpMessage(4, 0, resp)
+                                sendUserControl(7, time)
                             }
                         }
                     }
@@ -754,15 +751,7 @@ open class RtmpSession(
                     sendRtmpMessage(18, pubStream, notif) // data message
                     // Send User Control StreamBegin to the publisher (event type 0 + streamId)
                     try {
-                        val sb = ByteArray(6)
-                        sb[0] = 0
-                        sb[1] = 0
-                        val sid = pubStream
-                        sb[2] = ((sid shr 24) and 0xff).toByte()
-                        sb[3] = ((sid shr 16) and 0xff).toByte()
-                        sb[4] = ((sid shr 8) and 0xff).toByte()
-                        sb[5] = (sid and 0xff).toByte()
-                        sendRtmpMessage(4, 0, sb)
+                        sendUserControl(0, pubStream)
                         Log.i(TAGS, "Sent StreamBegin to publisher streamId=$pubStream")
                     } catch (e: Exception) {
                         Log.i(TAGS, "Error sending StreamBegin to publisher: ${e.message}")
@@ -826,15 +815,7 @@ open class RtmpSession(
                                 p.sendRtmpMessage(18, p.playStreamId, pn)
                                 // send StreamBegin to the player as Node does
                                 try {
-                                    val sbp = ByteArray(6)
-                                    sbp[0] = 0
-                                    sbp[1] = 0
-                                    val psid = p.playStreamId
-                                    sbp[2] = ((psid shr 24) and 0xff).toByte()
-                                    sbp[3] = ((psid shr 16) and 0xff).toByte()
-                                    sbp[4] = ((psid shr 8) and 0xff).toByte()
-                                    sbp[5] = (psid and 0xff).toByte()
-                                    p.sendRtmpMessage(4, 0, sbp)
+                                    p.sendUserControl(0, p.playStreamId)
                                 } catch (e: Exception) { Log.i(TAGS, "Error sending StreamBegin to queued player: ${e.message}") }
                                 // send cached metadata first (matches Node-Media-Server ordering), then sequence headers
                                 this.metaData?.let { md ->
