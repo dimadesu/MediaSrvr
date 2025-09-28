@@ -13,6 +13,7 @@ import android.content.SharedPreferences;
 import android.content.res.AssetManager;
 import java.net.*;
 import java.io.*;
+import java.util.LinkedList;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -56,36 +57,107 @@ public class MainActivity extends AppCompatActivity {
         }
 
     final Button buttonVersions = findViewById(R.id.btVersions);
-    final TextView textViewVersions = findViewById(R.id.tvVersions);
+    final android.widget.ListView listViewLogs = findViewById(R.id.lvLogs);
+    final java.util.ArrayList<String> logItems = new java.util.ArrayList<String>();
+    final android.widget.ArrayAdapter<String> logAdapter = new android.widget.ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, logItems);
+    listViewLogs.setAdapter(logAdapter);
 
-        buttonVersions.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
+    // Automatically poll and show nms.log without requiring button clicks
+    final android.os.Handler logHandler = new android.os.Handler();
+    final int LOG_POLL_MS = 1000;
+    final boolean[] loggingActive = {true};
+    final Runnable[] logPoller = new Runnable[1];
 
-                //Network operations should be done in the background.
-                new AsyncTask<Void,Void,String>() {
-                    @Override
-                    protected String doInBackground(Void... params) {
-                        String nodeResponse="";
-                        try {
-                            URL localNodeServer = new URL("http://localhost:3000/");
-                            BufferedReader in = new BufferedReader(
-                                    new InputStreamReader(localNodeServer.openStream()));
-                            String inputLine;
-                            while ((inputLine = in.readLine()) != null)
-                                nodeResponse=nodeResponse+inputLine;
-                            in.close();
-                        } catch (Exception ex) {
-                            nodeResponse=ex.toString();
+    logPoller[0] = new Runnable() {
+        @Override
+        public void run() {
+            // Read log file in background
+            new AsyncTask<Void,Void,String>() {
+                @Override
+                protected String doInBackground(Void... params) {
+                    try {
+                        String nodeDir = getApplicationContext().getFilesDir().getAbsolutePath()+"/nodejs-project";
+                        File logFile = new File(nodeDir + "/nms.log");
+                        if (!logFile.exists()) {
+                            return "(no nms.log found at " + logFile.getAbsolutePath() + ")";
                         }
-                        return nodeResponse;
+                        // Keep only the last N lines to avoid loading very large files into the UI
+                        final int MAX_LINES = 10;
+                        LinkedList<String> tail = new LinkedList<String>();
+                        BufferedReader br = new BufferedReader(new FileReader(logFile));
+                        String line;
+                        while ((line = br.readLine()) != null) {
+                            if (line == null) continue;
+                            String trimmed = line.trim();
+                            if (trimmed.length() == 0) continue; // skip empty lines
+                            // Collapse internal whitespace/newlines so each log entry is a single visual line
+                            String singleLine = trimmed.replaceAll("\\s+", " ");
+                            tail.add(singleLine);
+                            if (tail.size() > MAX_LINES) tail.removeFirst();
+                        }
+                        br.close();
+                        StringBuilder sb = new StringBuilder();
+                        for (String l : tail) {
+                            sb.append(l).append('\n');
+                        }
+                        return sb.toString();
+                    } catch (Exception e) {
+                        return e.toString();
                     }
-                    @Override
-                    protected void onPostExecute(String result) {
-                        textViewVersions.setText(result);
+                }
+                @Override
+                protected void onPostExecute(String result) {
+                    // result contains up to the last N lines separated by '\n'
+                    logItems.clear();
+                    if (result != null) {
+                        String[] lines = result.split("\\n");
+                        for (String l : lines) {
+                            if (l != null && l.length() > 0) logItems.add(l);
+                        }
                     }
-                }.execute();
+                    logAdapter.notifyDataSetChanged();
+                    // Scroll to bottom to show the most recent entries
+                    if (!logItems.isEmpty()) {
+                        listViewLogs.post(new Runnable() { public void run() { listViewLogs.setSelection(logItems.size() - 1); } });
+                    }
+                }
+            }.execute();
+
+            if (loggingActive[0]) {
+                logHandler.postDelayed(logPoller[0], LOG_POLL_MS);
             }
-        });
+        }
+    };
+
+    // start polling immediately
+    logHandler.post(logPoller[0]);
+
+    // Keep button available for manual refresh as well
+    buttonVersions.setOnClickListener(new View.OnClickListener() {
+        public void onClick(View v) {
+            // trigger an immediate poll
+            logHandler.post(logPoller[0]);
+        }
+    });
+
+    // Stop polling when activity is destroyed
+    this.getApplication().registerActivityLifecycleCallbacks(new android.app.Application.ActivityLifecycleCallbacks() {
+        @Override public void onActivityCreated(android.app.Activity activity, Bundle savedInstanceState) {}
+        @Override public void onActivityStarted(android.app.Activity activity) {}
+        @Override public void onActivityResumed(android.app.Activity activity) {}
+        @Override public void onActivityPaused(android.app.Activity activity) {}
+        @Override public void onActivityStopped(android.app.Activity activity) {}
+        @Override
+        public void onActivitySaveInstanceState(android.app.Activity activity, Bundle outState) {}
+        @Override
+        public void onActivityDestroyed(android.app.Activity activity) {
+            if (activity == MainActivity.this) {
+                loggingActive[0] = false;
+                logHandler.removeCallbacks(logPoller[0]);
+                getApplication().unregisterActivityLifecycleCallbacks(this);
+            }
+        }
+    });
 
     }
 
