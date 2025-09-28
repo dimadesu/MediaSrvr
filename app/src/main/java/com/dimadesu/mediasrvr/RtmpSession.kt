@@ -6,7 +6,7 @@ import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.net.Socket
 
-class RtmpSession(
+open class RtmpSession(
     val sessionId: Int,
     private val socket: Socket,
     private val input: DataInputStream,
@@ -319,7 +319,7 @@ class RtmpSession(
         try { connectMonitorJob?.cancel() } catch (_: Exception) {}
     }
 
-    private fun handleMessage(type: Int, streamId: Int, timestamp: Int, payload: ByteArray) {
+    internal open fun handleMessage(type: Int, streamId: Int, timestamp: Int, payload: ByteArray) {
         when (type) {
             1 -> { // set chunk size
                 if (payload.size >= 4) {
@@ -1158,7 +1158,7 @@ class RtmpSession(
         }
     }
 
-    private fun sendRtmpMessage(type: Int, streamId: Int, payload: ByteArray, timestamp: Int = 0) {
+    internal fun sendRtmpMessage(type: Int, streamId: Int, payload: ByteArray, timestamp: Int = 0) {
         // choose channel id similar to Node-Media-Server conventions
         // invoke -> channel 3, audio -> 4, video -> 5, data -> 6
         val cid = when (type) {
