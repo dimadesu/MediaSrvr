@@ -9,13 +9,16 @@ Discord server: https://discord.gg/2UzEkU2AJW
 Uses:
 - [Node Media Server v2](https://github.com/illuspas/Node-Media-Server/tree/v2).
 - Runs NMS using [Node.js mobile](https://github.com/nodejs-mobile/nodejs-mobile).
-- Project is based on [Node.js mobile sample app](https://github.com/nodejs-mobile/nodejs-mobile-samples/tree/master/android/native-gradle-node-folder) - needs a lot of updates.
+- Project is based on [Node.js mobile sample app](https://github.com/nodejs-mobile/nodejs-mobile-samples/tree/master/android/native-gradle-node-folder) - needed a lot of updates.
 
 ## How to Install
 
-I plan to release APK files via [GitHub Releases](https://github.com/dimadesu/MediaSrvr/releases).
+I am releasing APK files via [GitHub Releases](https://github.com/dimadesu/MediaSrvr/releases).
 
-When new version is realsed just open [GitHub Releases page](https://github.com/dimadesu/MediaSrvr/releases) on your Android device, download APK file and install.
+- Open [GitHub Releases page](https://github.com/dimadesu/MediaSrvr/releases) on your Android device.
+- Download APK file.
+- Install.
+- Enjoy!
 
 ## My Other Projects
 
