@@ -237,7 +237,8 @@ class MainActivity : AppCompatActivity() {
     private fun deleteFolderRecursively(file: File): Boolean {
         try {
             var res = true
-            for (childFile in file.listFiles()) {
+            val children = file.listFiles() ?: emptyArray()
+            for (childFile in children) {
                 if (childFile.isDirectory) {
                     res = res and deleteFolderRecursively(childFile)
                 } else {
