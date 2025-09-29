@@ -43,10 +43,6 @@ const config = {
     ping: 30,
     ping_timeout: 60,
   },
-  http: {
-    port: 8000,
-    allow_origin: "*",
-  },
 };
 
 var nms = new NodeMediaServer(config);
