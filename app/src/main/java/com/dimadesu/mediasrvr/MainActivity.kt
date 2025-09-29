@@ -48,11 +48,27 @@ class MainActivity : AppCompatActivity() {
     private val REQ_POST_NOTIFICATIONS = 1001
     private var pendingRequestNotification = false
 
+    // ViewModel that holds log lines across configuration changes
+    private lateinit var logViewModel: LogViewModel
+    private lateinit var logAdapter: ArrayAdapter<String>
+
     external fun startNodeWithArguments(arguments: Array<String>): Int
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        // Initialize log UI and ViewModel once in onCreate so state survives config changes
+        val listViewLogs = findViewById<ListView>(R.id.lvLogs)
+        logAdapter = ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, ArrayList())
+        listViewLogs.adapter = logAdapter
+        logViewModel = androidx.lifecycle.ViewModelProvider(this, androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.getInstance(application)).get(LogViewModel::class.java)
+        logViewModel.lines.observe(this) { newLines ->
+            logAdapter.clear()
+            logAdapter.addAll(newLines)
+            logAdapter.notifyDataSetChanged()
+            if (newLines.isNotEmpty()) listViewLogs.post { listViewLogs.setSelection(newLines.size - 1) }
+        }
 
         if (!_startedNodeAlready) {
             _startedNodeAlready = true
@@ -118,91 +134,17 @@ class MainActivity : AppCompatActivity() {
         }
 
         val buttonVersions = findViewById<Button>(R.id.btVersions)
-        val listViewLogs = findViewById<ListView>(R.id.lvLogs)
-        val logItems = ArrayList<String>()
-        val logAdapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, logItems)
-        listViewLogs.adapter = logAdapter
+        buttonVersions.setOnClickListener { logViewModel.startPolling() }
+    }
 
-        // Automatically poll and show nms.log without requiring button clicks
-        val LOG_POLL_MS = 1000L
-        var pollJob: Job? = null
+    override fun onStart() {
+        super.onStart()
+        logViewModel.startPolling()
+    }
 
-        fun startLogPolling() {
-            if (pollJob?.isActive == true) return
-            pollJob = lifecycleScope.launch(Dispatchers.IO) {
-                while (isActive) {
-                    val result = try {
-                        val logDir = applicationContext.filesDir.absolutePath + "/nodejs-project"
-                        val logFile = File("$logDir/nms.log")
-                        if (!logFile.exists()) {
-                            "(no nms.log found at ${logFile.absolutePath})"
-                        } else {
-                            val MAX_LINES = 10
-                            val tail = LinkedList<String>()
-                            val br = BufferedReader(FileReader(logFile))
-                            var line: String?
-                            while (br.readLine().also { line = it } != null) {
-                                if (line == null) continue
-                                val trimmed = line!!.trim()
-                                if (trimmed.isEmpty()) continue
-                                val singleLine = trimmed.replace(Regex("\\s+"), " ")
-                                tail.add(singleLine)
-                                if (tail.size > MAX_LINES) tail.removeFirst()
-                            }
-                            br.close()
-                            val sb = StringBuilder()
-                            for (l in tail) {
-                                sb.append(l).append('\n')
-                            }
-                            sb.toString()
-                        }
-                    } catch (e: Exception) {
-                        e.toString()
-                    }
-
-                    // Post UI updates on the main dispatcher
-                    launch(Dispatchers.Main) {
-                        logItems.clear()
-                        if (result.isNotEmpty()) {
-                            val lines = result.lines()
-                            for (l in lines) if (l.isNotEmpty()) logItems.add(l)
-                        }
-                        logAdapter.notifyDataSetChanged()
-                        if (logItems.isNotEmpty()) listViewLogs.post { listViewLogs.setSelection(logItems.size - 1) }
-                    }
-
-                    delay(LOG_POLL_MS)
-                }
-            }
-        }
-
-        // start polling immediately
-        startLogPolling()
-
-        // Keep button available for manual refresh as well
-        buttonVersions.setOnClickListener { startLogPolling() }
-
-        // Stop polling when activity is destroyed
-        this.application.registerActivityLifecycleCallbacks(object : android.app.Application.ActivityLifecycleCallbacks {
-            override fun onActivityCreated(activity: android.app.Activity, savedInstanceState: Bundle?) {}
-            override fun onActivityStarted(activity: android.app.Activity) {}
-            override fun onActivityResumed(activity: android.app.Activity) {}
-            override fun onActivityPaused(activity: android.app.Activity) {}
-            override fun onActivityStopped(activity: android.app.Activity) {}
-            override fun onActivitySaveInstanceState(activity: android.app.Activity, outState: Bundle) {}
-            override fun onActivityDestroyed(activity: android.app.Activity) {
-                if (activity == this@MainActivity) {
-                    pollJob?.cancel()
-                    application.unregisterActivityLifecycleCallbacks(this)
-                    try {
-                        val svcIntent = Intent(applicationContext, ForegroundService::class.java)
-                        applicationContext.stopService(svcIntent)
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
-                }
-            }
-        })
+    override fun onStop() {
+        super.onStop()
+        logViewModel.stopPolling()
     }
 
     // removed unused native declaration; keep main external API above
