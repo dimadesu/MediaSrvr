@@ -376,9 +376,9 @@ class MainActivity : AppCompatActivity() {
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            return "Error enumerating IPs"
+            return "Error enumerating IPs\n"
         }
-        val result = sb.toString().ifEmpty { "No network interfaces found" }
+        val result = sb.toString().ifEmpty { "No network interfaces found\n" }
         return result
     }
 
