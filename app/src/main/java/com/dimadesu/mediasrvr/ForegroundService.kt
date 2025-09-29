@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.os.Build
+import android.os.Process
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.app.TaskStackBuilder
@@ -14,6 +15,7 @@ class ForegroundService : Service() {
     companion object {
         const val CHANNEL_ID = "media_srvr_foreground_channel"
         const val NOTIF_ID = 9245
+        const val ACTION_STOP = "com.dimadesu.mediasrvr.action.STOP"
     }
 
     override fun onCreate() {
@@ -37,17 +39,42 @@ class ForegroundService : Service() {
             getPendingIntent(0, pendingFlags)
         }
 
+        // Create an action that stops the foreground service when clicked
+        val stopIntent = Intent(this, ForegroundService::class.java).apply {
+            action = ACTION_STOP
+        }
+        val stopPendingIntent = PendingIntent.getService(this, 1, stopIntent, pendingFlags)
+
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("MediaSrvr")
             .setContentText("Server is running")
             .setSmallIcon(android.R.drawable.ic_menu_info_details)
             .setContentIntent(pendingIntent)
+            .addAction(android.R.drawable.ic_media_pause, "Stop service", stopPendingIntent)
             .setOngoing(true)
             .build()
         startForeground(NOTIF_ID, notification)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Handle the Stop action from the notification
+        if (intent?.action == ACTION_STOP) {
+            try {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            } catch (e: Exception) {
+                stopForeground(true)
+            }
+            stopSelf()
+            // Kill the process to ensure native Node instance is terminated.
+            try {
+                Process.killProcess(Process.myPid())
+            } catch (e: Exception) {
+                // fallback to exit
+                kotlin.system.exitProcess(0)
+            }
+            return START_NOT_STICKY
+        }
+
         return START_STICKY
     }
 
