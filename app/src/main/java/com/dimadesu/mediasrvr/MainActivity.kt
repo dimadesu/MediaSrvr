@@ -132,8 +132,8 @@ class MainActivity : AppCompatActivity() {
             pollJob = lifecycleScope.launch(Dispatchers.IO) {
                 while (isActive) {
                     val result = try {
-                        val nodeDir = applicationContext.filesDir.absolutePath + "/nodejs-project"
-                        val logFile = File("$nodeDir/nms.log")
+                        val logDir = applicationContext.filesDir.absolutePath + "/nodejs-project"
+                        val logFile = File("$logDir/nms.log")
                         if (!logFile.exists()) {
                             "(no nms.log found at ${logFile.absolutePath})"
                         } else {
@@ -212,9 +212,9 @@ class MainActivity : AppCompatActivity() {
         val previousLastUpdateTime = prefs.getLong("NODEJS_MOBILE_APK_LastUpdateTime", 0)
         var lastUpdateTime = 1L
         try {
-            val packageInfo: PackageInfo = applicationContext.packageManager.getPackageInfo(applicationContext.packageName, 0)
-            lastUpdateTime = packageInfo.lastUpdateTime
-        } catch (e: PackageManager.NameNotFoundException) {
+            val packageInfo: PackageInfo? = getPackageInfoCompat(applicationContext.packageName)
+            if (packageInfo != null) lastUpdateTime = packageInfo.lastUpdateTime
+        } catch (e: Exception) {
             e.printStackTrace()
         }
         return lastUpdateTime != previousLastUpdateTime
@@ -223,9 +223,9 @@ class MainActivity : AppCompatActivity() {
     private fun saveLastUpdateTime() {
         var lastUpdateTime = 1L
         try {
-            val packageInfo: PackageInfo = applicationContext.packageManager.getPackageInfo(applicationContext.packageName, 0)
-            lastUpdateTime = packageInfo.lastUpdateTime
-        } catch (e: PackageManager.NameNotFoundException) {
+            val packageInfo: PackageInfo? = getPackageInfoCompat(applicationContext.packageName)
+            if (packageInfo != null) lastUpdateTime = packageInfo.lastUpdateTime
+        } catch (e: Exception) {
             e.printStackTrace()
         }
         val prefs = applicationContext.getSharedPreferences("NODEJS_MOBILE_PREFS", Context.MODE_PRIVATE)
@@ -270,18 +270,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun copyAsset(assetManager: AssetManager, fromAssetPath: String, toPath: String): Boolean {
-        var `in`: InputStream? = null
-        var out: OutputStream? = null
         try {
-            `in` = assetManager.open(fromAssetPath)
-            File(toPath).createNewFile()
-            out = FileOutputStream(toPath)
-            copyFile(`in`, out)
-            `in`.close()
-            `in` = null
-            out.flush()
-            out.close()
-            out = null
+            assetManager.open(fromAssetPath).use { input ->
+                File(toPath).apply { parentFile?.mkdirs(); createNewFile() }
+                FileOutputStream(toPath).use { output ->
+                    input.copyTo(output)
+                    output.flush()
+                }
+            }
             return true
         } catch (e: Exception) {
             e.printStackTrace()
@@ -291,10 +287,26 @@ class MainActivity : AppCompatActivity() {
 
     @Throws(IOException::class)
     private fun copyFile(`in`: InputStream, out: OutputStream) {
-        val buffer = ByteArray(1024)
-        var read: Int
-        while (`in`.read(buffer).also { read = it } != -1) {
-            out.write(buffer, 0, read)
+        `in`.use { input ->
+            out.use { output ->
+                input.copyTo(output)
+            }
+        }
+    }
+
+    // Compatibility helper for fetching PackageInfo without using deprecated overloads
+    private fun getPackageInfoCompat(packageName: String): PackageInfo? {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                // Use the modern API available on API 33+
+                packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0L))
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getPackageInfo(packageName, 0)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
         }
     }
 
@@ -315,7 +327,7 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread { startServiceAndNode(nodeDir) }
             } else {
                 Toast.makeText(this, "Notification permission denied. Node will run without foreground notification.", Toast.LENGTH_LONG).show()
-                Thread { startNodeWithArguments(arrayOf("node", "$nodeDir/main.js")) }.start()
+                lifecycleScope.launch(Dispatchers.IO) { startNodeWithArguments(arrayOf("node", "$nodeDir/main.js")) }
             }
         }
     }
