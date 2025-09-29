@@ -22,9 +22,12 @@
 #ifndef SRC_NODE_VERSION_H_
 #define SRC_NODE_VERSION_H_
 
-#define NODE_MAJOR_VERSION 8
-#define NODE_MINOR_VERSION 6
-#define NODE_PATCH_VERSION 0
+#define NODE_MAJOR_VERSION 18
+#define NODE_MINOR_VERSION 20
+#define NODE_PATCH_VERSION 4
+
+#define NODE_VERSION_IS_LTS 1
+#define NODE_VERSION_LTS_CODENAME "Hydrogen"
 
 #define NODE_VERSION_IS_RELEASE 1
 
@@ -72,11 +75,28 @@
  * Node.js will refuse to load modules that weren't compiled against its own
  * module ABI number, exposed as the process.versions.modules property.
  *
- * When this version number is changed, node.js will refuse
- * to load older modules.  This should be done whenever
- * an API is broken in the C++ side, including in v8 or
- * other dependencies.
+ * Node.js will refuse to load modules with a non-matching ABI version. The
+ * version number here should be changed whenever an ABI-incompatible API change
+ * is made in the C++ side, including in V8 or other dependencies.
+ *
+ * Node.js will not change the module version during a Major release line
+ * We will, at times update the version of V8 shipped in the release line
+ * if it can be made ABI compatible with the previous version.
+ *
+ * The registry of used NODE_MODULE_VERSION numbers is located at
+ *   https://github.com/nodejs/node/blob/HEAD/doc/abi_version_registry.json
+ * Extenders, embedders and other consumers of Node.js that require ABI
+ * version matching should open a pull request to reserve a number in this
+ * registry.
  */
-#define NODE_MODULE_VERSION 57 /* Node.js v8.0.0 */
+#define NODE_MODULE_VERSION 108
+
+// The NAPI_VERSION provided by this version of the runtime. This is the version
+// which the Node binary being built supports.
+#define NAPI_VERSION 9
+
+// Node API modules use NAPI_VERSION 8 by default if it is not explicitly
+// specified. It must be always 8.
+#define NODE_API_DEFAULT_MODULE_API_VERSION 8
 
 #endif  // SRC_NODE_VERSION_H_

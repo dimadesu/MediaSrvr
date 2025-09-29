@@ -9,6 +9,5 @@
 .cxx
 local.properties
 
-*.so
 /inspiration/
 /inspiration2/
