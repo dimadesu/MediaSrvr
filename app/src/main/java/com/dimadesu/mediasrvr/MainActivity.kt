@@ -4,7 +4,6 @@ package com.dimadesu.mediasrvr
 import android.Manifest
 import android.content.Context
 import android.content.Intent
-import android.content.SharedPreferences
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.content.res.AssetManager
@@ -12,7 +11,6 @@ import android.os.AsyncTask
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
-import android.view.View
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.ListView
@@ -99,7 +97,7 @@ class MainActivity : AppCompatActivity() {
     // Helper to start the foreground service and then the node process
     private fun startServiceAndNode(nodeDir: String) {
         try {
-            val svcIntent = Intent(applicationContext, NodeForegroundService::class.java)
+            val svcIntent = Intent(applicationContext, ForegroundService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 applicationContext.startForegroundService(svcIntent)
             } else {
@@ -204,7 +202,7 @@ class MainActivity : AppCompatActivity() {
                     logHandler.removeCallbacks(logPoller[0]!!)
                     application.unregisterActivityLifecycleCallbacks(this)
                     try {
-                        val svcIntent = Intent(applicationContext, NodeForegroundService::class.java)
+                        val svcIntent = Intent(applicationContext, ForegroundService::class.java)
                         applicationContext.stopService(svcIntent)
                     } catch (e: Exception) {
                         e.printStackTrace()

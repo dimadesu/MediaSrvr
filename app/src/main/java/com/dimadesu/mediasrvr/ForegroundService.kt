@@ -8,7 +8,7 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 
-class NodeForegroundService : Service() {
+class ForegroundService : Service() {
     companion object {
         const val CHANNEL_ID = "media_srvr_foreground_channel"
         const val NOTIF_ID = 9245
