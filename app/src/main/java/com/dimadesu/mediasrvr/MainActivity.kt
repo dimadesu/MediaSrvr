@@ -59,6 +59,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvIps: TextView
     private var connectivityManager: ConnectivityManager? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var hotspotReceiver: android.content.BroadcastReceiver? = null
 
     external fun startNodeWithArguments(arguments: Array<String>): Int
 
@@ -186,6 +187,24 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             e.printStackTrace()
         }
+
+        // Register hotspot/tethering broadcasts for broad device support
+        try {
+            hotspotReceiver = object : android.content.BroadcastReceiver() {
+                override fun onReceive(context: Context?, intent: android.content.Intent?) {
+                    // Any hotspot/tethering related intent -> refresh IPs
+                    refreshIps()
+                }
+            }
+            val filter = android.content.IntentFilter()
+            // Android Wi-Fi AP state change (may be vendor specific)
+            filter.addAction("android.net.wifi.WIFI_AP_STATE_CHANGED")
+            // Tethering state change (vendor specific action exists on some devices)
+            filter.addAction("android.net.conn.TETHER_STATE_CHANGED")
+            registerReceiver(hotspotReceiver, filter)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     override fun onStop() {
@@ -193,6 +212,16 @@ class MainActivity : AppCompatActivity() {
         try {
             if (connectivityManager != null && networkCallback != null) {
                 connectivityManager?.unregisterNetworkCallback(networkCallback!!)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        // Unregister hotspot receiver
+        try {
+            if (hotspotReceiver != null) {
+                unregisterReceiver(hotspotReceiver)
+                hotspotReceiver = null
             }
         } catch (e: Exception) {
             e.printStackTrace()
