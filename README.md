@@ -2,8 +2,6 @@
 
 Allows running RTMP media server as an Android app.
 
-Proof of concept works. Needs clean-up.
-
 Intended usage is mainly with [LifeStreamer](https://github.com/dimadesu/LifeStreamer) app, but can be used for anything you want really.
 
 Discord server: https://discord.gg/2UzEkU2AJW
