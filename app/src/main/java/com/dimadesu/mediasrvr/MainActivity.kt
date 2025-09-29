@@ -19,6 +19,11 @@ import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.ListView
 import android.widget.Toast
+import android.widget.TextView
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkRequest
+import android.net.LinkProperties
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -51,12 +56,18 @@ class MainActivity : AppCompatActivity() {
     // ViewModel that holds log lines across configuration changes
     private lateinit var logViewModel: LogViewModel
     private lateinit var logAdapter: ArrayAdapter<String>
+    private lateinit var tvIps: TextView
+    private var connectivityManager: ConnectivityManager? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var hotspotReceiver: android.content.BroadcastReceiver? = null
 
     external fun startNodeWithArguments(arguments: Array<String>): Int
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        tvIps = findViewById<TextView>(R.id.tvIps)
 
         // Initialize log UI and ViewModel once in onCreate so state survives config changes
         val listViewLogs = findViewById<ListView>(R.id.lvLogs)
@@ -103,6 +114,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // Load IPs initially
+        lifecycleScope.launch(Dispatchers.IO) {
+            val ips = getDeviceIps()
+            launch(Dispatchers.Main) { tvIps.text = ips }
+        }
     }
 
     override fun onResume() {
@@ -139,11 +155,86 @@ class MainActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         logViewModel.startPolling()
+        // Register network callback to auto-refresh IPs on changes
+        try {
+            connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            networkCallback = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    refreshIps()
+                }
+
+                override fun onLost(network: Network) {
+                    refreshIps()
+                }
+
+                override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
+                    refreshIps()
+                }
+
+                override fun onCapabilitiesChanged(network: Network, networkCapabilities: android.net.NetworkCapabilities) {
+                    // IP addressing or capability changes
+                    refreshIps()
+                }
+            }
+
+            // Prefer registerDefaultNetworkCallback when available to get broad updates
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                connectivityManager?.registerDefaultNetworkCallback(networkCallback!!)
+            } else {
+                val req = NetworkRequest.Builder().build()
+                connectivityManager?.registerNetworkCallback(req, networkCallback!!)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        // Register hotspot/tethering broadcasts for broad device support
+        try {
+            hotspotReceiver = object : android.content.BroadcastReceiver() {
+                override fun onReceive(context: Context?, intent: android.content.Intent?) {
+                    // Any hotspot/tethering related intent -> refresh IPs
+                    refreshIps()
+                }
+            }
+            val filter = android.content.IntentFilter()
+            // Android Wi-Fi AP state change (may be vendor specific)
+            filter.addAction("android.net.wifi.WIFI_AP_STATE_CHANGED")
+            // Tethering state change (vendor specific action exists on some devices)
+            filter.addAction("android.net.conn.TETHER_STATE_CHANGED")
+            registerReceiver(hotspotReceiver, filter)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     override fun onStop() {
+        // Unregister network callback to avoid leaks
+        try {
+            if (connectivityManager != null && networkCallback != null) {
+                connectivityManager?.unregisterNetworkCallback(networkCallback!!)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        // Unregister hotspot receiver
+        try {
+            if (hotspotReceiver != null) {
+                unregisterReceiver(hotspotReceiver)
+                hotspotReceiver = null
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
         super.onStop()
         logViewModel.stopPolling()
+    }
+
+    private fun refreshIps() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val ips = getDeviceIps()
+            launch(Dispatchers.Main) { tvIps.text = ips }
+        }
     }
 
     // removed unused native declaration; keep main external API above
@@ -250,6 +341,45 @@ class MainActivity : AppCompatActivity() {
             e.printStackTrace()
             null
         }
+    }
+
+    // Returns a formatted string containing device IPs on available network interfaces
+    private fun getDeviceIps(): String {
+        val sb = StringBuilder()
+        try {
+            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+            // common mobile interface name patterns to exclude (rmnet, ccmni, pdp, wwan, etc.)
+            val mobileIfRegex = Regex("(?i).*(rmnet|ccmni|pdp|wwan|rmnet_data|rmnet_qti).*")
+            while (interfaces.hasMoreElements()) {
+                val nif = interfaces.nextElement()
+                val ifName = nif.name ?: nif.displayName ?: ""
+                if (mobileIfRegex.matches(ifName)) {
+                    // skip mobile data interfaces
+                    continue
+                }
+                val addrs = nif.inetAddresses
+                val linePrefix = "${nif.displayName}: "
+                val entries = mutableListOf<String>()
+                while (addrs.hasMoreElements()) {
+                    val addr = addrs.nextElement()
+                    // Only include IPv4 addresses (filter out IPv6)
+                    if (!addr.isLoopbackAddress && addr is java.net.Inet4Address) {
+                        val host = addr.hostAddress ?: continue
+                        entries.add(host)
+                    }
+                }
+                if (entries.isNotEmpty()) {
+                    sb.append(linePrefix)
+                    sb.append(entries.joinToString(", "))
+                    sb.append("\n")
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return "Error enumerating IPs\n"
+        }
+        val result = sb.toString().ifEmpty { "No network interfaces found\n" }
+        return result
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
