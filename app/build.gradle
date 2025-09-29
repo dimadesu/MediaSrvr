@@ -1,4 +1,5 @@
 apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
 
 android {
     namespace 'com.dimadesu.mediasrvr'
@@ -82,10 +83,19 @@ android {
 
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:1.9.10"
     androidTestImplementation('androidx.test.espresso:espresso-core:3.5.1') {
         exclude group: 'androidx.annotation', module: 'annotation'
     }
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
     testImplementation 'junit:junit:4.13.2'
+}
+
+// Ensure Kotlin compiler JVM target matches Java compile options (Java 11)
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+    kotlinOptions {
+        jvmTarget = "11"
+    }
 }

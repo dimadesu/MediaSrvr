@@ -1,0 +1,330 @@
+package com.dimadesu.mediasrvr
+
+
+import android.Manifest
+import android.content.Context
+import android.content.Intent
+import android.content.SharedPreferences
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
+import android.content.res.AssetManager
+import android.os.AsyncTask
+import android.os.Build
+import android.os.Bundle
+import android.os.Handler
+import android.view.View
+import android.widget.ArrayAdapter
+import android.widget.Button
+import android.widget.ListView
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import java.io.BufferedReader
+import java.io.File
+import java.io.FileOutputStream
+import java.io.FileReader
+import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
+import java.util.LinkedList
+
+class MainActivity : AppCompatActivity() {
+
+    companion object {
+        init {
+            System.loadLibrary("native-lib")
+            System.loadLibrary("node")
+        }
+
+        // We just want one instance of node running in the background.
+        var _startedNodeAlready = false
+    }
+
+    // If we need to request POST_NOTIFICATIONS, store nodeDir here until the user responds.
+    private var pendingNodeDir: String? = null
+    private val REQ_POST_NOTIFICATIONS = 1001
+    private var pendingRequestNotification = false
+
+    external fun startNodeWithArguments(arguments: Array<String>): Int
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
+
+        if (!_startedNodeAlready) {
+            _startedNodeAlready = true
+            Thread {
+                val nodeDir = applicationContext.filesDir.absolutePath + "/nodejs-project"
+                if (wasAPKUpdated()) {
+                    val nodeDirReference = File(nodeDir)
+                    if (nodeDirReference.exists()) {
+                        deleteFolderRecursively(File(nodeDir))
+                    }
+                    copyAssetFolder(applicationContext.assets, "nodejs-project", nodeDir)
+
+                    saveLastUpdateTime()
+                }
+                // Permission requests and service starts must happen on the UI thread.
+                val _nodeDirForUi = nodeDir
+                runOnUiThread {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                            // permission already granted -> start service then node
+                            startServiceAndNode(_nodeDirForUi)
+                        } else {
+                            // mark that we need to request permission when the activity is resumed
+                            pendingNodeDir = _nodeDirForUi
+                            pendingRequestNotification = true
+                        }
+                    } else {
+                        // Older Android: no runtime notification permission required
+                        startServiceAndNode(_nodeDirForUi)
+                    }
+                }
+            }.start()
+        }
+
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (pendingRequestNotification && pendingNodeDir != null) {
+            pendingRequestNotification = false
+            // Request notifications permission now that the activity is resumed and in foreground
+            ActivityCompat.requestPermissions(this@MainActivity, arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_POST_NOTIFICATIONS)
+        }
+    }
+
+    // Helper to start the foreground service and then the node process
+    private fun startServiceAndNode(nodeDir: String) {
+        try {
+            val svcIntent = Intent(applicationContext, NodeForegroundService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                applicationContext.startForegroundService(svcIntent)
+            } else {
+                applicationContext.startService(svcIntent)
+            }
+        } catch (e: Exception) {
+            // Ignore failures starting the service; node can still be started.
+            e.printStackTrace()
+        }
+
+        // Start Node on a background thread so we don't block the UI thread
+        Thread {
+            startNodeWithArguments(arrayOf("node", "$nodeDir/main.js"))
+        }.start()
+
+        val buttonVersions = findViewById<Button>(R.id.btVersions)
+        val listViewLogs = findViewById<ListView>(R.id.lvLogs)
+        val logItems = ArrayList<String>()
+        val logAdapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, logItems)
+        listViewLogs.adapter = logAdapter
+
+        // Automatically poll and show nms.log without requiring button clicks
+        val logHandler = Handler()
+        val LOG_POLL_MS = 1000
+        val loggingActive = booleanArrayOf(true)
+        val logPoller = arrayOfNulls<Runnable>(1)
+
+        logPoller[0] = Runnable {
+            object : AsyncTask<Void, Void, String>() {
+                override fun doInBackground(vararg params: Void?): String {
+                    try {
+                        val nodeDir = applicationContext.filesDir.absolutePath + "/nodejs-project"
+                        val logFile = File("$nodeDir/nms.log")
+                        if (!logFile.exists()) {
+                            return "(no nms.log found at ${logFile.absolutePath})"
+                        }
+                        // Keep only the last N lines to avoid loading very large files into the UI
+                        val MAX_LINES = 10
+                        val tail = LinkedList<String>()
+                        val br = BufferedReader(FileReader(logFile))
+                        var line: String?
+                        while (br.readLine().also { line = it } != null) {
+                            if (line == null) continue
+                            val trimmed = line!!.trim()
+                            if (trimmed.isEmpty()) continue // skip empty lines
+                            // Collapse internal whitespace/newlines so each log entry is a single visual line
+                            val singleLine = trimmed.replace(Regex("\\s+"), " ")
+                            tail.add(singleLine)
+                            if (tail.size > MAX_LINES) tail.removeFirst()
+                        }
+                        br.close()
+                        val sb = StringBuilder()
+                        for (l in tail) {
+                            sb.append(l).append('\n')
+                        }
+                        return sb.toString()
+                    } catch (e: Exception) {
+                        return e.toString()
+                    }
+                }
+
+                override fun onPostExecute(result: String) {
+                    // result contains up to the last N lines separated by '\n'
+                    logItems.clear()
+                    if (result.isNotEmpty()) {
+                        val lines = result.split("\\n")
+                        for (l in lines) {
+                            if (l.isNotEmpty()) logItems.add(l)
+                        }
+                    }
+                    logAdapter.notifyDataSetChanged()
+                    // Scroll to bottom to show the most recent entries
+                    if (logItems.isNotEmpty()) {
+                        listViewLogs.post { listViewLogs.setSelection(logItems.size - 1) }
+                    }
+                }
+            }.execute()
+
+                if (loggingActive[0]) {
+                    logHandler.postDelayed(logPoller[0]!!, LOG_POLL_MS.toLong())
+                }
+        }
+
+    // start polling immediately
+    logHandler.post(logPoller[0]!!)
+
+    // Keep button available for manual refresh as well
+    buttonVersions.setOnClickListener { logHandler.post(logPoller[0]!!) }
+
+        // Stop polling when activity is destroyed
+        this.application.registerActivityLifecycleCallbacks(object : android.app.Application.ActivityLifecycleCallbacks {
+            override fun onActivityCreated(activity: android.app.Activity, savedInstanceState: Bundle?) {}
+            override fun onActivityStarted(activity: android.app.Activity) {}
+            override fun onActivityResumed(activity: android.app.Activity) {}
+            override fun onActivityPaused(activity: android.app.Activity) {}
+            override fun onActivityStopped(activity: android.app.Activity) {}
+            override fun onActivitySaveInstanceState(activity: android.app.Activity, outState: Bundle) {}
+            override fun onActivityDestroyed(activity: android.app.Activity) {
+                if (activity == this@MainActivity) {
+                    loggingActive[0] = false
+                    logHandler.removeCallbacks(logPoller[0]!!)
+                    application.unregisterActivityLifecycleCallbacks(this)
+                    try {
+                        val svcIntent = Intent(applicationContext, NodeForegroundService::class.java)
+                        applicationContext.stopService(svcIntent)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            }
+        })
+    }
+
+    private external fun startNodeWithArgumentsNative(arguments: Array<String>): Int
+
+    private fun wasAPKUpdated(): Boolean {
+        val prefs = applicationContext.getSharedPreferences("NODEJS_MOBILE_PREFS", Context.MODE_PRIVATE)
+        val previousLastUpdateTime = prefs.getLong("NODEJS_MOBILE_APK_LastUpdateTime", 0)
+        var lastUpdateTime = 1L
+        try {
+            val packageInfo: PackageInfo = applicationContext.packageManager.getPackageInfo(applicationContext.packageName, 0)
+            lastUpdateTime = packageInfo.lastUpdateTime
+        } catch (e: PackageManager.NameNotFoundException) {
+            e.printStackTrace()
+        }
+        return lastUpdateTime != previousLastUpdateTime
+    }
+
+    private fun saveLastUpdateTime() {
+        var lastUpdateTime = 1L
+        try {
+            val packageInfo: PackageInfo = applicationContext.packageManager.getPackageInfo(applicationContext.packageName, 0)
+            lastUpdateTime = packageInfo.lastUpdateTime
+        } catch (e: PackageManager.NameNotFoundException) {
+            e.printStackTrace()
+        }
+        val prefs = applicationContext.getSharedPreferences("NODEJS_MOBILE_PREFS", Context.MODE_PRIVATE)
+        val editor = prefs.edit()
+        editor.putLong("NODEJS_MOBILE_APK_LastUpdateTime", lastUpdateTime)
+        editor.commit()
+    }
+
+    private fun deleteFolderRecursively(file: File): Boolean {
+        try {
+            var res = true
+            for (childFile in file.listFiles()) {
+                if (childFile.isDirectory) {
+                    res = res and deleteFolderRecursively(childFile)
+                } else {
+                    res = res and childFile.delete()
+                }
+            }
+            res = res and file.delete()
+            return res
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return false
+        }
+    }
+
+    private fun copyAssetFolder(assetManager: AssetManager, fromAssetPath: String, toPath: String): Boolean {
+        try {
+            val files = assetManager.list(fromAssetPath)
+            var res = true
+            if (files.isNullOrEmpty()) {
+                res = res and copyAsset(assetManager, fromAssetPath, toPath)
+            } else {
+                File(toPath).mkdirs()
+                for (file in files) res = res and copyAssetFolder(assetManager, "$fromAssetPath/$file", "$toPath/$file")
+            }
+            return res
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return false
+        }
+    }
+
+    private fun copyAsset(assetManager: AssetManager, fromAssetPath: String, toPath: String): Boolean {
+        var `in`: InputStream? = null
+        var out: OutputStream? = null
+        try {
+            `in` = assetManager.open(fromAssetPath)
+            File(toPath).createNewFile()
+            out = FileOutputStream(toPath)
+            copyFile(`in`, out)
+            `in`.close()
+            `in` = null
+            out.flush()
+            out.close()
+            out = null
+            return true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return false
+        }
+    }
+
+    @Throws(IOException::class)
+    private fun copyFile(`in`: InputStream, out: OutputStream) {
+        val buffer = ByteArray(1024)
+        var read: Int
+        while (`in`.read(buffer).also { read = it } != -1) {
+            out.write(buffer, 0, read)
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_POST_NOTIFICATIONS) {
+            var granted = false
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                granted = true
+            }
+
+            val nodeDir = pendingNodeDir
+            pendingNodeDir = null
+
+            if (nodeDir == null) return
+
+            if (granted) {
+                runOnUiThread { startServiceAndNode(nodeDir) }
+            } else {
+                Toast.makeText(this, "Notification permission denied. Node will run without foreground notification.", Toast.LENGTH_LONG).show()
+                Thread { startNodeWithArguments(arrayOf("node", "$nodeDir/main.js")) }.start()
+            }
+        }
+    }
+}
