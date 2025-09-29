@@ -165,7 +165,8 @@ class MainActivity : AppCompatActivity() {
                     // result contains up to the last N lines separated by '\n'
                     logItems.clear()
                     if (result.isNotEmpty()) {
-                        val lines = result.split("\\n")
+                        // Use lines() which splits on real newlines and handles trailing newline correctly
+                        val lines = result.lines()
                         for (l in lines) {
                             if (l.isNotEmpty()) logItems.add(l)
                         }
