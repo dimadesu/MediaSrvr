@@ -11,7 +11,7 @@ Uses:
 - Runs NMS using [Node.js mobile](https://github.com/nodejs-mobile/nodejs-mobile).
 - Project is based on [Node.js mobile sample app](https://github.com/nodejs-mobile/nodejs-mobile-samples/tree/master/android/native-gradle-node-folder) - needs a lot of updates.
 
-## How to install
+## How to Install
 
 I plan to release APK files via [GitHub Releases](https://github.com/dimadesu/MediaSrvr/releases).
 
