@@ -319,8 +319,15 @@ class MainActivity : AppCompatActivity() {
         val sb = StringBuilder()
         try {
             val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+            // common mobile interface name patterns to exclude (rmnet, ccmni, pdp, wwan, etc.)
+            val mobileIfRegex = Regex("(?i).*(rmnet|ccmni|pdp|wwan|rmnet_data|rmnet_qti).*")
             while (interfaces.hasMoreElements()) {
                 val nif = interfaces.nextElement()
+                val ifName = nif.name ?: nif.displayName ?: ""
+                if (mobileIfRegex.matches(ifName)) {
+                    // skip mobile data interfaces
+                    continue
+                }
                 val addrs = nif.inetAddresses
                 val linePrefix = "${nif.displayName}: "
                 val entries = mutableListOf<String>()
