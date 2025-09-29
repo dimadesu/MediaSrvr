@@ -1,4 +1,4 @@
-package com.yourorg.sample;
+package com.dimadesu.mediasrvr;
 
 import android.os.AsyncTask;
 import androidx.appcompat.app.AppCompatActivity;
@@ -361,7 +361,7 @@ public class MainActivity extends AppCompatActivity {
                     }
                 });
             } else {
-                // User denied notifications — show a toast and start node without foreground service
+                // User denied notifications - show a toast and start node without foreground service
                 Toast.makeText(this, "Notification permission denied. Node will run without foreground notification.", Toast.LENGTH_LONG).show();
                 new Thread(new Runnable() {
                     @Override

@@ -1,4 +1,4 @@
-package com.yourorg.sample;
+package com.dimadesu.mediasrvr;
 
 import android.app.Notification;
 import android.app.NotificationChannel;

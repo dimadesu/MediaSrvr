@@ -64,10 +64,10 @@ int start_redirecting_stdout_stderr() {
 
 //node's libUV requires all arguments being on contiguous memory.
 extern "C" jint JNICALL
-Java_com_yourorg_sample_MainActivity_startNodeWithArguments(
-        JNIEnv *env,
-        jobject /* this */,
-        jobjectArray arguments) {
+Java_com_dimadesu_mediasrvr_MainActivity_startNodeWithArguments(
+    JNIEnv *env,
+    jobject /* this */,
+    jobjectArray arguments) {
 
     //argc
     jsize argument_count = env->GetArrayLength(arguments);

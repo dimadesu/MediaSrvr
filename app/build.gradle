@@ -1,12 +1,12 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace 'com.yourorg.sample'
+    namespace 'com.dimadesu.mediasrvr'
     compileSdkVersion 33
     ndkVersion "25.2.9519653"
     buildToolsVersion "33.0.2"
     defaultConfig {
-        applicationId "com.yourorg.sample"
+    applicationId "com.dimadesu.mediasrvr"
     minSdkVersion 21
     targetSdkVersion 33
         versionCode 1
