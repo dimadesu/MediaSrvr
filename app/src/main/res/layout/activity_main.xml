@@ -19,6 +19,20 @@
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toRightOf="parent" />
 
+    <TextView
+        android:id="@+id/tvIps"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginTop="8dp"
+        android:text="IPs: (auto-refreshes)"
+        android:textAppearance="?android:attr/textAppearanceSmall"
+        android:padding="8dp"
+        app:layout_constraintTop_toBottomOf="@+id/tvHeader"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent" />
+
     <ListView
         android:id="@+id/lvLogs"
         android:layout_width="match_parent"
@@ -32,7 +46,7 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toRightOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/tvHeader"
+        app:layout_constraintTop_toBottomOf="@+id/tvIps"
         app:layout_constraintVertical_bias="0.0" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
