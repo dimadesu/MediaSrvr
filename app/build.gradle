@@ -5,7 +5,6 @@ android {
     namespace 'com.dimadesu.mediasrvr'
     compileSdkVersion 33
     ndkVersion "25.2.9519653"
-    buildToolsVersion "33.0.2"
     defaultConfig {
     applicationId "com.dimadesu.mediasrvr"
     minSdkVersion 21
@@ -89,6 +88,9 @@ dependencies {
     }
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    // Coroutines and lifecycle helpers for replacing AsyncTask/Handler with lifecycle-aware coroutines
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.6.1'
     testImplementation 'junit:junit:4.13.2'
 }
 

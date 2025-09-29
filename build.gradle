@@ -6,8 +6,8 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        // Update to Android Gradle Plugin 8.1.0 (compatible with Gradle 8.5)
-        classpath 'com.android.tools.build:gradle:8.1.0'
+        // Try Android Gradle Plugin 8.2.2 for better JDK21 compatibility
+        classpath 'com.android.tools.build:gradle:8.2.2'
 
         // Kotlin Gradle plugin for Kotlin Android support
         classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.10'
@@ -21,7 +21,7 @@ allprojects {
     repositories {
         // Required to resolve Android and other artifacts
         maven { url "https://maven.google.com" }
-        jcenter()
+        mavenCentral()
         mavenCentral()
     }
 }

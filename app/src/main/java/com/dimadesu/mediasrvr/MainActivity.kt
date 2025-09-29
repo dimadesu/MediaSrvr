@@ -7,10 +7,14 @@ import android.content.Intent
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.content.res.AssetManager
-import android.os.AsyncTask
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.ListView
@@ -52,7 +56,8 @@ class MainActivity : AppCompatActivity() {
 
         if (!_startedNodeAlready) {
             _startedNodeAlready = true
-            Thread {
+            // Use lifecycleScope to perform IO work and then switch to UI for permission/service start
+            lifecycleScope.launch(Dispatchers.IO) {
                 val nodeDir = applicationContext.filesDir.absolutePath + "/nodejs-project"
                 if (wasAPKUpdated()) {
                     val nodeDirReference = File(nodeDir)
@@ -60,12 +65,11 @@ class MainActivity : AppCompatActivity() {
                         deleteFolderRecursively(File(nodeDir))
                     }
                     copyAssetFolder(applicationContext.assets, "nodejs-project", nodeDir)
-
                     saveLastUpdateTime()
                 }
-                // Permission requests and service starts must happen on the UI thread.
+
                 val _nodeDirForUi = nodeDir
-                runOnUiThread {
+                launch(Dispatchers.Main) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
                             // permission already granted -> start service then node
@@ -80,7 +84,7 @@ class MainActivity : AppCompatActivity() {
                         startServiceAndNode(_nodeDirForUi)
                     }
                 }
-            }.start()
+            }
         }
 
     }
@@ -108,10 +112,10 @@ class MainActivity : AppCompatActivity() {
             e.printStackTrace()
         }
 
-        // Start Node on a background thread so we don't block the UI thread
-        Thread {
+        // Start Node on a background coroutine so we don't block the UI thread
+        lifecycleScope.launch(Dispatchers.IO) {
             startNodeWithArguments(arrayOf("node", "$nodeDir/main.js"))
-        }.start()
+        }
 
         val buttonVersions = findViewById<Button>(R.id.btVersions)
         val listViewLogs = findViewById<ListView>(R.id.lvLogs)
@@ -120,73 +124,63 @@ class MainActivity : AppCompatActivity() {
         listViewLogs.adapter = logAdapter
 
         // Automatically poll and show nms.log without requiring button clicks
-        val logHandler = Handler()
-        val LOG_POLL_MS = 1000
-        val loggingActive = booleanArrayOf(true)
-        val logPoller = arrayOfNulls<Runnable>(1)
+        val LOG_POLL_MS = 1000L
+        var pollJob: Job? = null
 
-        logPoller[0] = Runnable {
-            object : AsyncTask<Void, Void, String>() {
-                override fun doInBackground(vararg params: Void?): String {
-                    try {
-                        val nodeDir = applicationContext.filesDir.absolutePath + "/nodejs-project"
-                        val logFile = File("$nodeDir/nms.log")
+        fun startLogPolling() {
+            if (pollJob?.isActive == true) return
+            pollJob = lifecycleScope.launch(Dispatchers.IO) {
+                while (isActive) {
+                    val result = try {
+                        val logDir = applicationContext.filesDir.absolutePath + "/nodejs-project"
+                        val logFile = File("$logDir/nms.log")
                         if (!logFile.exists()) {
-                            return "(no nms.log found at ${logFile.absolutePath})"
+                            "(no nms.log found at ${logFile.absolutePath})"
+                        } else {
+                            val MAX_LINES = 10
+                            val tail = LinkedList<String>()
+                            val br = BufferedReader(FileReader(logFile))
+                            var line: String?
+                            while (br.readLine().also { line = it } != null) {
+                                if (line == null) continue
+                                val trimmed = line!!.trim()
+                                if (trimmed.isEmpty()) continue
+                                val singleLine = trimmed.replace(Regex("\\s+"), " ")
+                                tail.add(singleLine)
+                                if (tail.size > MAX_LINES) tail.removeFirst()
+                            }
+                            br.close()
+                            val sb = StringBuilder()
+                            for (l in tail) {
+                                sb.append(l).append('\n')
+                            }
+                            sb.toString()
                         }
-                        // Keep only the last N lines to avoid loading very large files into the UI
-                        val MAX_LINES = 10
-                        val tail = LinkedList<String>()
-                        val br = BufferedReader(FileReader(logFile))
-                        var line: String?
-                        while (br.readLine().also { line = it } != null) {
-                            if (line == null) continue
-                            val trimmed = line!!.trim()
-                            if (trimmed.isEmpty()) continue // skip empty lines
-                            // Collapse internal whitespace/newlines so each log entry is a single visual line
-                            val singleLine = trimmed.replace(Regex("\\s+"), " ")
-                            tail.add(singleLine)
-                            if (tail.size > MAX_LINES) tail.removeFirst()
-                        }
-                        br.close()
-                        val sb = StringBuilder()
-                        for (l in tail) {
-                            sb.append(l).append('\n')
-                        }
-                        return sb.toString()
                     } catch (e: Exception) {
-                        return e.toString()
+                        e.toString()
                     }
-                }
 
-                override fun onPostExecute(result: String) {
-                    // result contains up to the last N lines separated by '\n'
-                    logItems.clear()
-                    if (result.isNotEmpty()) {
-                        // Use lines() which splits on real newlines and handles trailing newline correctly
-                        val lines = result.lines()
-                        for (l in lines) {
-                            if (l.isNotEmpty()) logItems.add(l)
+                    // Post UI updates on the main dispatcher
+                    launch(Dispatchers.Main) {
+                        logItems.clear()
+                        if (result.isNotEmpty()) {
+                            val lines = result.lines()
+                            for (l in lines) if (l.isNotEmpty()) logItems.add(l)
                         }
+                        logAdapter.notifyDataSetChanged()
+                        if (logItems.isNotEmpty()) listViewLogs.post { listViewLogs.setSelection(logItems.size - 1) }
                     }
-                    logAdapter.notifyDataSetChanged()
-                    // Scroll to bottom to show the most recent entries
-                    if (logItems.isNotEmpty()) {
-                        listViewLogs.post { listViewLogs.setSelection(logItems.size - 1) }
-                    }
-                }
-            }.execute()
 
-                if (loggingActive[0]) {
-                    logHandler.postDelayed(logPoller[0]!!, LOG_POLL_MS.toLong())
+                    delay(LOG_POLL_MS)
                 }
+            }
         }
 
-    // start polling immediately
-    logHandler.post(logPoller[0]!!)
+        // start polling immediately
+        startLogPolling()
 
-    // Keep button available for manual refresh as well
-    buttonVersions.setOnClickListener { logHandler.post(logPoller[0]!!) }
+        // Keep button available for manual refresh as well
+        buttonVersions.setOnClickListener { startLogPolling() }
 
         // Stop polling when activity is destroyed
         this.application.registerActivityLifecycleCallbacks(object : android.app.Application.ActivityLifecycleCallbacks {
@@ -198,8 +192,7 @@ class MainActivity : AppCompatActivity() {
             override fun onActivitySaveInstanceState(activity: android.app.Activity, outState: Bundle) {}
             override fun onActivityDestroyed(activity: android.app.Activity) {
                 if (activity == this@MainActivity) {
-                    loggingActive[0] = false
-                    logHandler.removeCallbacks(logPoller[0]!!)
+                    pollJob?.cancel()
                     application.unregisterActivityLifecycleCallbacks(this)
                     try {
                         val svcIntent = Intent(applicationContext, ForegroundService::class.java)
@@ -212,16 +205,16 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-    private external fun startNodeWithArgumentsNative(arguments: Array<String>): Int
+    // removed unused native declaration; keep main external API above
 
     private fun wasAPKUpdated(): Boolean {
         val prefs = applicationContext.getSharedPreferences("NODEJS_MOBILE_PREFS", Context.MODE_PRIVATE)
         val previousLastUpdateTime = prefs.getLong("NODEJS_MOBILE_APK_LastUpdateTime", 0)
         var lastUpdateTime = 1L
         try {
-            val packageInfo: PackageInfo = applicationContext.packageManager.getPackageInfo(applicationContext.packageName, 0)
-            lastUpdateTime = packageInfo.lastUpdateTime
-        } catch (e: PackageManager.NameNotFoundException) {
+            val packageInfo: PackageInfo? = getPackageInfoCompat(applicationContext.packageName)
+            if (packageInfo != null) lastUpdateTime = packageInfo.lastUpdateTime
+        } catch (e: Exception) {
             e.printStackTrace()
         }
         return lastUpdateTime != previousLastUpdateTime
@@ -230,9 +223,9 @@ class MainActivity : AppCompatActivity() {
     private fun saveLastUpdateTime() {
         var lastUpdateTime = 1L
         try {
-            val packageInfo: PackageInfo = applicationContext.packageManager.getPackageInfo(applicationContext.packageName, 0)
-            lastUpdateTime = packageInfo.lastUpdateTime
-        } catch (e: PackageManager.NameNotFoundException) {
+            val packageInfo: PackageInfo? = getPackageInfoCompat(applicationContext.packageName)
+            if (packageInfo != null) lastUpdateTime = packageInfo.lastUpdateTime
+        } catch (e: Exception) {
             e.printStackTrace()
         }
         val prefs = applicationContext.getSharedPreferences("NODEJS_MOBILE_PREFS", Context.MODE_PRIVATE)
@@ -244,7 +237,8 @@ class MainActivity : AppCompatActivity() {
     private fun deleteFolderRecursively(file: File): Boolean {
         try {
             var res = true
-            for (childFile in file.listFiles()) {
+            val children = file.listFiles() ?: emptyArray()
+            for (childFile in children) {
                 if (childFile.isDirectory) {
                     res = res and deleteFolderRecursively(childFile)
                 } else {
@@ -277,18 +271,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun copyAsset(assetManager: AssetManager, fromAssetPath: String, toPath: String): Boolean {
-        var `in`: InputStream? = null
-        var out: OutputStream? = null
         try {
-            `in` = assetManager.open(fromAssetPath)
-            File(toPath).createNewFile()
-            out = FileOutputStream(toPath)
-            copyFile(`in`, out)
-            `in`.close()
-            `in` = null
-            out.flush()
-            out.close()
-            out = null
+            assetManager.open(fromAssetPath).use { input ->
+                File(toPath).apply { parentFile?.mkdirs(); createNewFile() }
+                FileOutputStream(toPath).use { output ->
+                    input.copyTo(output)
+                    output.flush()
+                }
+            }
             return true
         } catch (e: Exception) {
             e.printStackTrace()
@@ -298,10 +288,26 @@ class MainActivity : AppCompatActivity() {
 
     @Throws(IOException::class)
     private fun copyFile(`in`: InputStream, out: OutputStream) {
-        val buffer = ByteArray(1024)
-        var read: Int
-        while (`in`.read(buffer).also { read = it } != -1) {
-            out.write(buffer, 0, read)
+        `in`.use { input ->
+            out.use { output ->
+                input.copyTo(output)
+            }
+        }
+    }
+
+    // Compatibility helper for fetching PackageInfo without using deprecated overloads
+    private fun getPackageInfoCompat(packageName: String): PackageInfo? {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                // Use the modern API available on API 33+
+                packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0L))
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getPackageInfo(packageName, 0)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
         }
     }
 
@@ -322,7 +328,7 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread { startServiceAndNode(nodeDir) }
             } else {
                 Toast.makeText(this, "Notification permission denied. Node will run without foreground notification.", Toast.LENGTH_LONG).show()
-                Thread { startNodeWithArguments(arrayOf("node", "$nodeDir/main.js")) }.start()
+                lifecycleScope.launch(Dispatchers.IO) { startNodeWithArguments(arrayOf("node", "$nodeDir/main.js")) }
             }
         }
     }
