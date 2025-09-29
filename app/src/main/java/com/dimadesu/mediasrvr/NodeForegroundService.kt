@@ -10,7 +10,7 @@ import androidx.core.app.NotificationCompat
 
 class NodeForegroundService : Service() {
     companion object {
-        const val CHANNEL_ID = "node_foreground_channel"
+        const val CHANNEL_ID = "media_srvr_foreground_channel"
         const val NOTIF_ID = 9245
     }
 
@@ -18,8 +18,8 @@ class NodeForegroundService : Service() {
         super.onCreate()
         createNotificationChannel()
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Node Media Server")
-            .setContentText("Node Media Server is running")
+            .setContentTitle("Media Srvr")
+            .setContentText("Server is running")
             .setSmallIcon(android.R.drawable.ic_menu_info_details)
             .setOngoing(true)
             .build()
@@ -41,8 +41,8 @@ class NodeForegroundService : Service() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(CHANNEL_ID, "Node Foreground Service", NotificationManager.IMPORTANCE_LOW)
-            channel.description = "Keeps Node Media Server running in foreground"
+            val channel = NotificationChannel(CHANNEL_ID, "Media Srvr Foreground Service", NotificationManager.IMPORTANCE_LOW)
+            channel.description = "Keeps Media Srvr running in foreground"
             val nm = getSystemService(NotificationManager::class.java)
             nm?.createNotificationChannel(channel)
         }
