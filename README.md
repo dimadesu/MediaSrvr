@@ -6,6 +6,8 @@ Proof of concept works. Needs clean-up.
 
 Intended usage is mainly with [LifeStreamer](https://github.com/dimadesu/LifeStreamer) app, but can be used for anything you want really.
 
+Discord server: https://discord.gg/2UzEkU2AJW
+
 Uses:
 - [Node Media Server v2](https://github.com/illuspas/Node-Media-Server/tree/v2).
 - Runs NMS using [Node.js mobile](https://github.com/nodejs-mobile/nodejs-mobile).
