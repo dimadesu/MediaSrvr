@@ -169,9 +169,20 @@ class MainActivity : AppCompatActivity() {
                 override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
                     refreshIps()
                 }
+
+                override fun onCapabilitiesChanged(network: Network, networkCapabilities: android.net.NetworkCapabilities) {
+                    // IP addressing or capability changes
+                    refreshIps()
+                }
             }
-            val req = NetworkRequest.Builder().build()
-            connectivityManager?.registerNetworkCallback(req, networkCallback!!)
+
+            // Prefer registerDefaultNetworkCallback when available to get broad updates
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                connectivityManager?.registerDefaultNetworkCallback(networkCallback!!)
+            } else {
+                val req = NetworkRequest.Builder().build()
+                connectivityManager?.registerNetworkCallback(req, networkCallback!!)
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         }

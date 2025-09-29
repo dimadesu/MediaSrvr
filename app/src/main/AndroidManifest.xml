@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Required to observe network state changes -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Required to call startForeground on services -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <!-- Required on Android 13+ to request notifications at runtime -->
