@@ -133,8 +133,7 @@ class MainActivity : AppCompatActivity() {
             startNodeWithArguments(arrayOf("node", "$nodeDir/main.js"))
         }
 
-        val buttonVersions = findViewById<Button>(R.id.btVersions)
-        buttonVersions.setOnClickListener { logViewModel.startPolling() }
+    // btVersions button removed from layout; no-op here.
     }
 
     override fun onStart() {

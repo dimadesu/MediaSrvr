@@ -7,19 +7,17 @@
     android:layout_height="match_parent"
     tools:context="com.dimadesu.mediasrvr.MainActivity">
 
-    <Button
-        android:id="@+id/btVersions"
-        android:layout_width="wrap_content"
+    <TextView
+        android:id="@+id/tvHeader"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="Node Versions"
+        android:layout_margin="16dp"
+        android:layout_marginEnd="34dp"
+        android:text="RTMP media server runs automatically on app start. Kill app service to stop it.\n\nPublish RTMP streams to URL:\nrtmp://localhost:1935/publish/live\n\nUse the same URL for playback."
+        android:textAppearance="?android:attr/textAppearanceMedium"
         app:layout_constraintTop_toTopOf="parent"
-        android:layout_marginTop="8dp"
-        android:layout_marginRight="8dp"
-        app:layout_constraintRight_toRightOf="parent"
-        android:layout_marginLeft="8dp"
         app:layout_constraintLeft_toLeftOf="parent"
-        android:layout_marginStart="8dp"
-        android:layout_marginEnd="8dp" />
+        app:layout_constraintRight_toRightOf="parent" />
 
     <ListView
         android:id="@+id/lvLogs"
@@ -30,11 +28,11 @@
         android:layout_marginLeft="8dp"
         android:layout_marginRight="8dp"
         android:layout_marginStart="8dp"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="16dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toRightOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/btVersions"
+        app:layout_constraintTop_toBottomOf="@+id/tvHeader"
         app:layout_constraintVertical_bias="0.0" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
