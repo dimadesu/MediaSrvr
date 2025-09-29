@@ -50,7 +50,7 @@ class ForegroundService : Service() {
             .setContentText("Server is running")
             .setSmallIcon(android.R.drawable.ic_menu_info_details)
             .setContentIntent(pendingIntent)
-            .addAction(android.R.drawable.ic_media_pause, "Stop service", stopPendingIntent)
+            .addAction(android.R.drawable.ic_media_pause, "Stop RTMP server", stopPendingIntent)
             .setOngoing(true)
             .build()
         startForeground(NOTIF_ID, notification)

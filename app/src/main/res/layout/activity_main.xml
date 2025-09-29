@@ -15,7 +15,7 @@
         android:layout_marginTop="16dp"
         android:layout_marginEnd="34dp"
         android:layout_marginBottom="8dp"
-        android:text="RTMP media server runs automatically on app start. Kill app service to stop it.\n\nPublish RTMP streams to URL:\nrtmp://localhost:1935/publish/live\n\nUse the same URL for playback."
+        android:text="RTMP server starts when you open the app. To stop it tap the button in notification.\n\nPublish RTMP stream to:\nrtmp://localhost:1935/publish/live\n\nPlayback using the same URL."
         android:textAppearance="?android:attr/textAppearanceMedium"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintLeft_toLeftOf="parent"
