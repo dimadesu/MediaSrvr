@@ -35,7 +35,14 @@ class ForegroundService : Service() {
     }
 
     override fun onDestroy() {
-        stopForeground(true)
+        // Use STOP_FOREGROUND_REMOVE for clarity with newer APIs
+        try {
+            @Suppress("Deprecation")
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } catch (e: Exception) {
+            // Fallback to deprecated boolean form if constant unavailable
+            stopForeground(true)
+        }
         super.onDestroy()
     }
 
