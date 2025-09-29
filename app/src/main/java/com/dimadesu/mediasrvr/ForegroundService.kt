@@ -18,7 +18,7 @@ class ForegroundService : Service() {
         super.onCreate()
         createNotificationChannel()
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Media Srvr")
+            .setContentTitle("MediaSrvr")
             .setContentText("Server is running")
             .setSmallIcon(android.R.drawable.ic_menu_info_details)
             .setOngoing(true)
@@ -47,8 +47,8 @@ class ForegroundService : Service() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(CHANNEL_ID, "Media Srvr Foreground Service", NotificationManager.IMPORTANCE_LOW)
-            channel.description = "Keeps Media Srvr running in foreground"
+            val channel = NotificationChannel(CHANNEL_ID, "MediaSrvr Foreground Service", NotificationManager.IMPORTANCE_LOW)
+            channel.description = "Keeps MediaSrvr running in foreground"
             val nm = getSystemService(NotificationManager::class.java)
             nm?.createNotificationChannel(channel)
         }
