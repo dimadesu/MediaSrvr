@@ -69,16 +69,26 @@ class MainActivity : AppCompatActivity() {
 
         tvIps = findViewById<TextView>(R.id.tvIps)
 
-        // Initialize log UI and ViewModel once in onCreate so state survives config changes
-        val listViewLogs = findViewById<ListView>(R.id.lvLogs)
-        logAdapter = ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, ArrayList())
-        listViewLogs.adapter = logAdapter
+    // Initialize log UI and ViewModel once in onCreate so state survives config changes
+    val rvLogs = findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.rvLogs)
+    val layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this)
+    rvLogs.layoutManager = layoutManager
+    val logAdapterRv = LogAdapter()
+    rvLogs.adapter = logAdapterRv
         logViewModel = androidx.lifecycle.ViewModelProvider(this, androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.getInstance(application)).get(LogViewModel::class.java)
         logViewModel.lines.observe(this) { newLines ->
-            logAdapter.clear()
-            logAdapter.addAll(newLines)
-            logAdapter.notifyDataSetChanged()
-            if (newLines.isNotEmpty()) listViewLogs.post { listViewLogs.setSelection(newLines.size - 1) }
+            // Determine if we should auto-scroll: use RecyclerView.canScrollVertically(1)
+            // If canScrollVertically(1) == false then the view is already at the bottom.
+            val countBefore = (rvLogs.adapter?.itemCount) ?: 0
+            val atBottom = (countBefore == 0) || !rvLogs.canScrollVertically(1)
+
+            // Submit the new list via ListAdapter (diff applied on background thread)
+            logAdapterRv.submitList(ArrayList(newLines)) {
+                // callback after diff applied: scroll only if we were at the bottom
+                if (newLines.isNotEmpty() && atBottom) {
+                    rvLogs.post { rvLogs.scrollToPosition(newLines.size - 1) }
+                }
+            }
         }
 
         if (!_startedNodeAlready) {
