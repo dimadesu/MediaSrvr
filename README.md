@@ -44,6 +44,6 @@ For example, to publish stream from action camera to the server on your phone:
 
 - Phone and action camera have to be on the same Wi-Fi.
 - You can create Wi-Fi hotspot with your phone and configure action camera to connect to Wi-Fi hotspot.
-- App shows device IPs. Your should see IP address of the hotspot Wi-Fi.
-- Replace `localhost` in URL with device IP. Example: `rtmp://192.168.0.1:1935/publish/live`.
-- Configure action camera to publish to that URL.
+- App shows device IPs. Your should see IP address of the Wi-Fi hotspot.
+- Replace `localhost` in URL with IP address of Wi-Fi hotspot. Example: `rtmp://192.168.0.1:1935/publish/live`.
+- Configure action camera to publish to this URL.
