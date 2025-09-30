@@ -6,6 +6,10 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Needed to observe Wi-Fi AP / hotspot state changes -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- Allow acquiring CPU wake locks while running the server -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Required to acquire high-performance Wi‑Fi locks when needed -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <!-- Required to call startForeground on services -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <!-- Required on Android 13+ to request notifications at runtime -->
