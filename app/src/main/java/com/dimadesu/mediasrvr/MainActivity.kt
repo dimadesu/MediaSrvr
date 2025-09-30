@@ -77,11 +77,10 @@ class MainActivity : AppCompatActivity() {
     rvLogs.adapter = logAdapterRv
         logViewModel = androidx.lifecycle.ViewModelProvider(this, androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.getInstance(application)).get(LogViewModel::class.java)
         logViewModel.lines.observe(this) { newLines ->
-            // Determine if we should auto-scroll: true when the user is currently at the bottom
-            val firstVisible = layoutManager.findFirstVisibleItemPosition()
-            val lastVisible = layoutManager.findLastVisibleItemPosition()
-            val countBefore = logAdapterRv.itemCount
-            val atBottom = (countBefore == 0) || (lastVisible >= countBefore - 1)
+            // Determine if we should auto-scroll: use RecyclerView.canScrollVertically(1)
+            // If canScrollVertically(1) == false then the view is already at the bottom.
+            val countBefore = (rvLogs.adapter?.itemCount) ?: 0
+            val atBottom = (countBefore == 0) || !rvLogs.canScrollVertically(1)
 
             // Submit the new list via ListAdapter (diff applied on background thread)
             logAdapterRv.submitList(ArrayList(newLines)) {
