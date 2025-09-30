@@ -11,7 +11,7 @@ import androidx.recyclerview.widget.RecyclerView
 class LogAdapter : ListAdapter<String, LogAdapter.LogViewHolder>(LogDiffCallback()) {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): LogViewHolder {
-        val v = LayoutInflater.from(parent.context).inflate(android.R.layout.simple_list_item_1, parent, false)
+        val v = LayoutInflater.from(parent.context).inflate(R.layout.item_log, parent, false)
         return LogViewHolder(v)
     }
 
@@ -20,7 +20,7 @@ class LogAdapter : ListAdapter<String, LogAdapter.LogViewHolder>(LogDiffCallback
     }
 
     class LogViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        private val tv: TextView = itemView.findViewById(android.R.id.text1)
+    private val tv: TextView = itemView.findViewById(R.id.tvLogLine)
         fun bind(text: String) {
             tv.text = text
         }
