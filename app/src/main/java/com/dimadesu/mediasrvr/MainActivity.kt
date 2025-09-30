@@ -69,23 +69,26 @@ class MainActivity : AppCompatActivity() {
 
         tvIps = findViewById<TextView>(R.id.tvIps)
 
-        // Initialize log UI and ViewModel once in onCreate so state survives config changes
-        val listViewLogs = findViewById<ListView>(R.id.lvLogs)
-        logAdapter = ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, ArrayList())
-        listViewLogs.adapter = logAdapter
+    // Initialize log UI and ViewModel once in onCreate so state survives config changes
+    val rvLogs = findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.rvLogs)
+    val layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this)
+    rvLogs.layoutManager = layoutManager
+    val logAdapterRv = LogAdapter()
+    rvLogs.adapter = logAdapterRv
         logViewModel = androidx.lifecycle.ViewModelProvider(this, androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.getInstance(application)).get(LogViewModel::class.java)
         logViewModel.lines.observe(this) { newLines ->
-            // Preserve user scroll position: only auto-scroll if the list was already at the bottom
-            val lastVisible = listViewLogs.lastVisiblePosition
-            val countBefore = logAdapter.count
+            // Determine if we should auto-scroll: true when the user is currently at the bottom
+            val firstVisible = layoutManager.findFirstVisibleItemPosition()
+            val lastVisible = layoutManager.findLastVisibleItemPosition()
+            val countBefore = logAdapterRv.itemCount
             val atBottom = (countBefore == 0) || (lastVisible >= countBefore - 1)
 
-            logAdapter.clear()
-            logAdapter.addAll(newLines)
-            logAdapter.notifyDataSetChanged()
-
-            if (newLines.isNotEmpty() && atBottom) {
-                listViewLogs.post { listViewLogs.setSelection(newLines.size - 1) }
+            // Submit the new list via ListAdapter (diff applied on background thread)
+            logAdapterRv.submitList(ArrayList(newLines)) {
+                // callback after diff applied: scroll only if we were at the bottom
+                if (newLines.isNotEmpty() && atBottom) {
+                    rvLogs.post { rvLogs.scrollToPosition(newLines.size - 1) }
+                }
             }
         }
 
