@@ -114,9 +114,10 @@ class ForegroundService : Service() {
             val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
             if (wakeLock?.isHeld != true) {
                 wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "mediasrvr:node_wakelock")
-                // safety timeout: 30 minutes
-                wakeLock?.acquire(30 * 60 * 1000L)
-                Log.i(TAG, "acquired partial wakelock")
+                // rely on explicit releaseWakeLocks() instead of a timeout; make non-reference-counted
+                wakeLock?.setReferenceCounted(false)
+                wakeLock?.acquire()
+                Log.i(TAG, "acquired partial wakelock (explicit release required)")
             }
 
             // Optional Wi‑Fi lock to keep Wi‑Fi radio active (requires CHANGE_WIFI_STATE)
