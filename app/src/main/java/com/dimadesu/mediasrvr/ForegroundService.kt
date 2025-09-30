@@ -51,8 +51,8 @@ class ForegroundService : Service() {
         val stopPendingIntent = PendingIntent.getService(this, 1, stopIntent, pendingFlags)
 
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("MediaSrvr")
-            .setContentText("Server is running")
+            .setContentTitle("RTMP server status:")
+            .setContentText("Running")
             .setSmallIcon(android.R.drawable.ic_menu_info_details)
             .setContentIntent(pendingIntent)
             .addAction(android.R.drawable.ic_media_pause, "Stop RTMP server", stopPendingIntent)
