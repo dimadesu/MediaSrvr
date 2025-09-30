@@ -75,10 +75,18 @@ class MainActivity : AppCompatActivity() {
         listViewLogs.adapter = logAdapter
         logViewModel = androidx.lifecycle.ViewModelProvider(this, androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.getInstance(application)).get(LogViewModel::class.java)
         logViewModel.lines.observe(this) { newLines ->
+            // Preserve user scroll position: only auto-scroll if the list was already at the bottom
+            val lastVisible = listViewLogs.lastVisiblePosition
+            val countBefore = logAdapter.count
+            val atBottom = (countBefore == 0) || (lastVisible >= countBefore - 1)
+
             logAdapter.clear()
             logAdapter.addAll(newLines)
             logAdapter.notifyDataSetChanged()
-            if (newLines.isNotEmpty()) listViewLogs.post { listViewLogs.setSelection(newLines.size - 1) }
+
+            if (newLines.isNotEmpty() && atBottom) {
+                listViewLogs.post { listViewLogs.setSelection(newLines.size - 1) }
+            }
         }
 
         if (!_startedNodeAlready) {
