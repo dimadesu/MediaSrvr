@@ -33,6 +33,13 @@
         android:layout_marginBottom="12dp" />
 
       <TextView
+          android:id="@+id/p0"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:text="RTMP server starts when you open the app. To stop it tap the button in notification."
+          android:layout_marginBottom="8dp" />
+
+      <TextView
         android:id="@+id/sub1"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
