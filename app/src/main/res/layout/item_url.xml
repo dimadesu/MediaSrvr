@@ -24,7 +24,7 @@
     android:layout_height="wrap_content"
     android:textAppearance="?android:attr/textAppearanceSmall"
     android:typeface="monospace"
-    android:textColor="@android:color/holo_blue_dark"
+    android:textColor="@android:color/black"
     android:focusable="false" />
 
 </LinearLayout>
