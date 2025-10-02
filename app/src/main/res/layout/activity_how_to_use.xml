@@ -104,21 +104,14 @@
         <TextView
           android:layout_width="match_parent"
           android:layout_height="wrap_content"
-          android:text="\u2022 App shows IP addresses of this device. You should see the IP address of the Wi‑Fi hotspot."
+          android:text="\u2022 App builds RTMP URLs for each network this device is on."
           android:layout_marginBottom="8dp"
           android:lineSpacingExtra="4dp" />
 
         <TextView
           android:layout_width="match_parent"
           android:layout_height="wrap_content"
-          android:text="\u2022 Replace 'localhost' in the URL with the IP address of the Wi‑Fi hotspot.\nExample: rtmp://192.168.0.1:1935/publish/live"
-          android:layout_marginBottom="8dp"
-          android:lineSpacingExtra="4dp" />
-
-        <TextView
-          android:layout_width="match_parent"
-          android:layout_height="wrap_content"
-          android:text="\u2022 Configure action camera to connect to the Wi‑Fi hotspot and publish to this URL."
+          android:text="\u2022 Configure action camera to connect to the Wi‑Fi hotspot and publish to RTMP URL."
           android:lineSpacingExtra="4dp" />
 
       </LinearLayout>
