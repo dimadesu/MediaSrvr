@@ -25,7 +25,7 @@
         android:layout_marginStart="16dp"
         android:textStyle="bold"
         android:layout_marginTop="16dp"
-        android:text="RTMP URLs (tap to copy):"
+        android:text="Tap on URL to copy"
         android:textAppearance="?android:attr/textAppearanceMedium"
         app:layout_constraintTop_toBottomOf="@+id/btHowToUse"
         app:layout_constraintStart_toStartOf="parent" />
