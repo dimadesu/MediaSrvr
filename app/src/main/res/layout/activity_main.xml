@@ -7,19 +7,16 @@
     android:layout_height="match_parent"
     tools:context="com.dimadesu.mediasrvr.MainActivity">
 
-    <TextView
-        android:id="@+id/tvHeader"
-        android:layout_width="0dp"
+    <Button
+        android:id="@+id/btHowToUse"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginStart="16dp"
         android:layout_marginTop="16dp"
-        android:layout_marginEnd="16dp"
-        android:layout_marginBottom="8dp"
-        android:text="RTMP server starts when you open the app. To stop it tap the button in notification.\n\nPublish RTMP stream to:\nrtmp://localhost:1935/publish/live\n\nPlayback using the same URL."
-        android:textAppearance="?android:attr/textAppearanceMedium"
+        android:layout_marginEnd="34dp"
+        android:text="How to use"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintLeft_toLeftOf="parent"
-        app:layout_constraintRight_toRightOf="parent" />
+        app:layout_constraintStart_toStartOf="parent" />
 
     <TextView
         android:id="@+id/tvIpsTitle"
@@ -30,8 +27,8 @@
         android:layout_marginTop="16dp"
         android:text="Your device IP(s):"
         android:textAppearance="?android:attr/textAppearanceMedium"
-        app:layout_constraintTop_toBottomOf="@+id/tvHeader"
-        app:layout_constraintLeft_toLeftOf="parent" />
+        app:layout_constraintTop_toBottomOf="@+id/btHowToUse"
+        app:layout_constraintStart_toStartOf="parent" />
 
     <TextView
         android:id="@+id/tvIps"

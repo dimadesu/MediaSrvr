@@ -31,6 +31,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".HowToUseActivity" android:exported="false" />
         <service android:name=".ForegroundService" android:exported="false" />
     </application>
 

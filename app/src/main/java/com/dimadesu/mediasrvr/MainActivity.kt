@@ -69,6 +69,12 @@ class MainActivity : AppCompatActivity() {
 
         tvIps = findViewById<TextView>(R.id.tvIps)
 
+        // How to use button
+        val btHowToUse = findViewById<Button>(R.id.btHowToUse)
+        btHowToUse.setOnClickListener {
+            startActivity(Intent(this@MainActivity, HowToUseActivity::class.java))
+        }
+
     // Initialize log UI and ViewModel once in onCreate so state survives config changes
     val rvLogs = findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.rvLogs)
     val layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this)
