@@ -7,6 +7,7 @@
   android:paddingEnd="16dp"
   android:paddingTop="16dp"
   android:textAppearance="?android:attr/textAppearanceSmall"
+  android:textSize="16sp"
   android:textColor="@color/logText"
   android:background="?attr/selectableItemBackground"
   android:ellipsize="end"

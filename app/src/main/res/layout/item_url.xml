@@ -14,6 +14,7 @@
     android:textAppearance="?android:attr/textAppearanceSmall"
     android:textStyle="bold"
     android:textColor="@android:color/black"
+    android:textSize="16sp"
     android:paddingBottom="2dp" />
 
   <TextView
@@ -23,6 +24,7 @@
     android:textAppearance="?android:attr/textAppearanceSmall"
     android:typeface="monospace"
     android:textColor="@android:color/black"
+    android:textSize="16sp"
     android:focusable="false" />
 
 </LinearLayout>
