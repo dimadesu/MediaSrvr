@@ -84,7 +84,7 @@
         android:id="@+id/bullets"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="\u2022 Phone and action camera have to be on the same Wi-Fi.\n\u2022 You can create Wi-Fi hotspot with your phone and configure action camera to connect to Wi-Fi hotspot.\n\u2022 App shows device IPs. You should see IP address of the Wi-Fi hotspot.\n\u2022 Replace localhost in URL with IP address of Wi-Fi hotspot. Example: rtmp://192.168.0.1:1935/publish/live.\n\u2022 Configure action camera to publish to this URL."
+        android:text="\u2022 Phone and action camera have to be on the same Wi-Fi.\n\u2022 You can create Wi-Fi hotspot with your phone and configure action camera to connect to Wi-Fi hotspot.\n\u2022 App shows device IPs. You should see IP address of the Wi-Fi hotspot.\n\u2022 Replace 'localhost' in URL with IP address of Wi-Fi hotspot. Example: rtmp://192.168.0.1:1935/publish/live.\n\u2022 Configure action camera to publish to this URL."
         android:layout_marginBottom="16dp" />
 
     </LinearLayout>
