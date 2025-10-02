@@ -15,6 +15,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.ListView
@@ -57,6 +59,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var logViewModel: LogViewModel
     private lateinit var logAdapter: ArrayAdapter<String>
     private lateinit var tvIps: TextView
+    private lateinit var urlAdapter: UrlAdapter
     private var connectivityManager: ConnectivityManager? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var hotspotReceiver: android.content.BroadcastReceiver? = null
@@ -130,10 +133,27 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // Initialize URL RecyclerView
+        val rvUrls = findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.rvUrls)
+        val urlLayoutManager = androidx.recyclerview.widget.LinearLayoutManager(this)
+        rvUrls.layoutManager = urlLayoutManager
+        urlAdapter = UrlAdapter { url ->
+            // Copy URL to clipboard when tapped
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = ClipData.newPlainText("RTMP URL", url)
+            clipboard.setPrimaryClip(clip)
+            Toast.makeText(this, "URL copied: $url", Toast.LENGTH_SHORT).show()
+        }
+        rvUrls.adapter = urlAdapter
+
         // Load IPs initially
         lifecycleScope.launch(Dispatchers.IO) {
             val ips = getDeviceIps()
-            launch(Dispatchers.Main) { tvIps.text = ips }
+            val urls = buildRtmpUrls(getDeviceIpList())
+            launch(Dispatchers.Main) {
+                tvIps.text = ips
+                urlAdapter.submitList(urls)
+            }
         }
     }
 
@@ -249,7 +269,11 @@ class MainActivity : AppCompatActivity() {
     private fun refreshIps() {
         lifecycleScope.launch(Dispatchers.IO) {
             val ips = getDeviceIps()
-            launch(Dispatchers.Main) { tvIps.text = ips }
+            val urls = buildRtmpUrls(getDeviceIpList())
+            launch(Dispatchers.Main) {
+                tvIps.text = ips
+                urlAdapter.submitList(urls)
+            }
         }
     }
 
@@ -357,6 +381,39 @@ class MainActivity : AppCompatActivity() {
             e.printStackTrace()
             null
         }
+    }
+
+    // Returns list of device IP addresses (IPv4 only, excluding loopback and mobile data)
+    private fun getDeviceIpList(): List<String> {
+        val ipList = mutableListOf<String>()
+        try {
+            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+            val mobileIfRegex = Regex("(?i).*(rmnet|ccmni|pdp|wwan|rmnet_data|rmnet_qti).*")
+            while (interfaces.hasMoreElements()) {
+                val nif = interfaces.nextElement()
+                val ifName = nif.name ?: nif.displayName ?: ""
+                if (mobileIfRegex.matches(ifName)) continue
+                
+                val addrs = nif.inetAddresses
+                while (addrs.hasMoreElements()) {
+                    val addr = addrs.nextElement()
+                    if (!addr.isLoopbackAddress && addr is java.net.Inet4Address) {
+                        val host = addr.hostAddress ?: continue
+                        ipList.add(host)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return ipList
+    }
+
+    // Build full RTMP URLs from IP addresses
+    private fun buildRtmpUrls(ips: List<String>): List<String> {
+        val urls = mutableListOf("rtmp://localhost:1935/publish/live")
+        urls.addAll(ips.map { ip -> "rtmp://$ip:1935/publish/live" })
+        return urls
     }
 
     // Returns a formatted string containing device IPs on available network interfaces
