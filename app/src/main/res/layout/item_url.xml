@@ -11,4 +11,5 @@
   android:typeface="monospace"
   android:background="?attr/selectableItemBackground"
   android:textColor="@android:color/holo_blue_dark"
-  android:textIsSelectable="true" />
+  android:clickable="true"
+  android:focusable="false" />
