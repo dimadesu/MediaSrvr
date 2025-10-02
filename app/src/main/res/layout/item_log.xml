@@ -11,4 +11,4 @@
   android:textColor="@color/logText"
   android:background="?attr/selectableItemBackground"
   android:ellipsize="end"
-  android:maxLines="5" />
+/>
