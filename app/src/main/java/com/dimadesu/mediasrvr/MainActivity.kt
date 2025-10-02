@@ -142,7 +142,6 @@ class MainActivity : AppCompatActivity() {
             val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             val clip = ClipData.newPlainText("RTMP URL", url)
             clipboard.setPrimaryClip(clip)
-            Toast.makeText(this, "URL copied: $url", Toast.LENGTH_SHORT).show()
         }
         rvUrls.adapter = urlAdapter
 
