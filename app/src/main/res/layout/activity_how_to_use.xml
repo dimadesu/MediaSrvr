@@ -5,18 +5,90 @@
   android:layout_width="match_parent"
   android:layout_height="match_parent">
 
-  <TextView
-    android:id="@+id/tvHowToUse"
+  <ScrollView
+    android:id="@+id/scroll"
     android:layout_width="0dp"
-    android:layout_height="wrap_content"
-    android:layout_marginStart="16dp"
-    android:layout_marginTop="16dp"
-    android:layout_marginEnd="16dp"
-    android:layout_marginBottom="16dp"
-    android:text="RTMP server starts when you open the app. To stop it tap the button in notification.\n\nPublish RTMP stream to:\nrtmp://localhost:1935/publish/live\n\nPlayback using the same URL."
-    android:textAppearance="?android:attr/textAppearanceMedium"
+    android:layout_height="0dp"
     app:layout_constraintTop_toTopOf="parent"
-    app:layout_constraintLeft_toLeftOf="parent"
-    app:layout_constraintRight_toRightOf="parent" />
+    app:layout_constraintBottom_toBottomOf="parent"
+    app:layout_constraintStart_toStartOf="parent"
+    app:layout_constraintEnd_toEndOf="parent">
+
+    <LinearLayout
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:orientation="vertical"
+      android:paddingStart="16dp"
+      android:paddingEnd="16dp"
+      android:paddingTop="16dp"
+      android:paddingBottom="24dp">
+
+      <TextView
+        android:id="@+id/titleHowTo"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="How to Use"
+        android:textStyle="bold"
+        android:textSize="20sp"
+        android:layout_marginBottom="12dp" />
+
+      <TextView
+        android:id="@+id/sub1"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Publish streams from streaming app on your device to the server on the same device"
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp" />
+
+      <TextView
+        android:id="@+id/p1"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Publish streams to:"
+        android:layout_marginBottom="8dp" />
+
+      <TextView
+        android:id="@+id/code1"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#F0F0F0"
+        android:padding="8dp"
+        android:textAppearance="?android:attr/textAppearanceSmall"
+        android:typeface="monospace"
+        android:text="rtmp://localhost:1935/publish/live"
+        android:layout_marginBottom="12dp" />
+
+      <TextView
+        android:id="@+id/p2"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Play streams using the same URL."
+        android:layout_marginBottom="16dp" />
+
+      <TextView
+        android:id="@+id/sub2"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Publish streams from another device/camera to the server on your device"
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp" />
+
+      <TextView
+        android:id="@+id/p3"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="For example, to publish stream from action camera to the server on your phone:"
+        android:layout_marginBottom="8dp" />
+
+      <TextView
+        android:id="@+id/bullets"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="\u2022 Phone and action camera have to be on the same Wi-Fi.\n\u2022 You can create Wi-Fi hotspot with your phone and configure action camera to connect to Wi-Fi hotspot.\n\u2022 App shows device IPs. You should see IP address of the Wi-Fi hotspot.\n\u2022 Replace localhost in URL with IP address of Wi-Fi hotspot. Example: rtmp://192.168.0.1:1935/publish/live.\n\u2022 Configure action camera to publish to this URL."
+        android:layout_marginBottom="16dp" />
+
+    </LinearLayout>
+
+  </ScrollView>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
