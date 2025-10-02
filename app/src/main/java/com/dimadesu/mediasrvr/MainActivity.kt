@@ -58,7 +58,6 @@ class MainActivity : AppCompatActivity() {
     // ViewModel that holds log lines across configuration changes
     private lateinit var logViewModel: LogViewModel
     private lateinit var logAdapter: ArrayAdapter<String>
-    private lateinit var tvIps: TextView
     private lateinit var urlAdapter: UrlAdapter
     private var connectivityManager: ConnectivityManager? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
@@ -69,8 +68,6 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-
-        tvIps = findViewById<TextView>(R.id.tvIps)
 
         // How to use button
         val btHowToUse = findViewById<Button>(R.id.btHowToUse)
@@ -145,12 +142,10 @@ class MainActivity : AppCompatActivity() {
         }
         rvUrls.adapter = urlAdapter
 
-        // Load IPs initially
+        // Load URLs initially (include interface/display names next to each URL)
         lifecycleScope.launch(Dispatchers.IO) {
-            val ips = getDeviceIps()
-            val urls = buildRtmpUrls(getDeviceIpList())
+            val urls = buildRtmpUrls(getDeviceIpPairs())
             launch(Dispatchers.Main) {
-                tvIps.text = ips
                 urlAdapter.submitList(urls)
             }
         }
@@ -267,10 +262,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshIps() {
         lifecycleScope.launch(Dispatchers.IO) {
-            val ips = getDeviceIps()
-            val urls = buildRtmpUrls(getDeviceIpList())
+            val urls = buildRtmpUrls(getDeviceIpPairs())
             launch(Dispatchers.Main) {
-                tvIps.text = ips
                 urlAdapter.submitList(urls)
             }
         }
@@ -408,11 +401,41 @@ class MainActivity : AppCompatActivity() {
         return ipList
     }
 
-    // Build full RTMP URLs from IP addresses
-    private fun buildRtmpUrls(ips: List<String>): List<String> {
-        val urls = mutableListOf("rtmp://localhost:1935/publish/live")
-        urls.addAll(ips.map { ip -> "rtmp://$ip:1935/publish/live" })
+    // Build full RTMP URLs from (interface display name, ip) pairs
+    // Returns a list of pairs: first = interface/display name, second = full RTMP URL
+    private fun buildRtmpUrls(ipPairs: List<Pair<String, String>>): List<Pair<String, String>> {
+        val urls = mutableListOf<Pair<String, String>>()
+        // include localhost entry
+        urls.add(Pair("localhost", "rtmp://localhost:1935/publish/live"))
+        for ((ifName, ip) in ipPairs) {
+            urls.add(Pair(ifName, "rtmp://$ip:1935/publish/live"))
+        }
         return urls
+    }
+
+    // Returns a list of (interface display name, IPv4 address) pairs
+    private fun getDeviceIpPairs(): List<Pair<String, String>> {
+        val results = mutableListOf<Pair<String, String>>()
+        try {
+            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+            val mobileIfRegex = Regex("(?i).*(rmnet|ccmni|pdp|wwan|rmnet_data|rmnet_qti).*")
+            while (interfaces.hasMoreElements()) {
+                val nif = interfaces.nextElement()
+                val ifName = nif.displayName ?: nif.name ?: ""
+                if (mobileIfRegex.matches(ifName)) continue
+                val addrs = nif.inetAddresses
+                while (addrs.hasMoreElements()) {
+                    val addr = addrs.nextElement()
+                    if (!addr.isLoopbackAddress && addr is java.net.Inet4Address) {
+                        val host = addr.hostAddress ?: continue
+                        results.add(Pair(ifName, host))
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return results
     }
 
     // Returns a formatted string containing device IPs on available network interfaces

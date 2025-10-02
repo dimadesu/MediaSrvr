@@ -19,30 +19,6 @@
         app:layout_constraintStart_toStartOf="parent" />
 
     <TextView
-        android:id="@+id/tvIpsTitle"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="16dp"
-        android:textStyle="bold"
-        android:layout_marginTop="16dp"
-        android:text="Your device IP(s):"
-        android:textAppearance="?android:attr/textAppearanceMedium"
-        app:layout_constraintTop_toBottomOf="@+id/btHowToUse"
-        app:layout_constraintStart_toStartOf="parent" />
-
-    <TextView
-        android:id="@+id/tvIps"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="16dp"
-        android:layout_marginEnd="16dp"
-        android:text="IPs: (auto-refreshes)"
-        android:textAppearance="?android:attr/textAppearanceMedium"
-        app:layout_constraintTop_toBottomOf="@+id/tvIpsTitle"
-        app:layout_constraintLeft_toLeftOf="parent"
-        app:layout_constraintRight_toRightOf="parent" />
-
-    <TextView
         android:id="@+id/tvUrlsTitle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -51,7 +27,7 @@
         android:layout_marginTop="16dp"
         android:text="RTMP URLs (tap to copy):"
         android:textAppearance="?android:attr/textAppearanceMedium"
-        app:layout_constraintTop_toBottomOf="@+id/tvIps"
+        app:layout_constraintTop_toBottomOf="@+id/btHowToUse"
         app:layout_constraintStart_toStartOf="parent" />
 
     <androidx.recyclerview.widget.RecyclerView
