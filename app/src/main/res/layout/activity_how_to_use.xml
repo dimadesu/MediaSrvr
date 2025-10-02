@@ -36,7 +36,7 @@
         android:id="@+id/sub1"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Publish streams from streaming app on your device to the server on the same device"
+        android:text="Publish streams from streaming app on this device to the server on the same device"
         android:textStyle="bold"
         android:layout_marginBottom="8dp" />
 
@@ -69,7 +69,7 @@
         android:id="@+id/sub2"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Publish streams from another device/camera to the server on your device"
+        android:text="Publish streams from another device or camera to the server on this device"
         android:textStyle="bold"
         android:layout_marginBottom="8dp" />
 
@@ -80,12 +80,48 @@
         android:text="For example, to publish stream from action camera to the server on your phone:"
         android:layout_marginBottom="8dp" />
 
-      <TextView
-        android:id="@+id/bullets"
+      <LinearLayout
+        android:id="@+id/bullets_container"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="\u2022 Phone and action camera have to be on the same Wi-Fi.\n\u2022 You can create Wi-Fi hotspot with your phone and configure action camera to connect to Wi-Fi hotspot.\n\u2022 App shows device IPs. You should see IP address of the Wi-Fi hotspot.\n\u2022 Replace 'localhost' in URL with IP address of Wi-Fi hotspot. Example: rtmp://192.168.0.1:1935/publish/live.\n\u2022 Configure action camera to publish to this URL."
-        android:layout_marginBottom="16dp" />
+        android:orientation="vertical"
+        android:layout_marginBottom="16dp">
+
+        <TextView
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:text="\u2022 Phone and action camera have to be on the same Wi‑Fi."
+          android:layout_marginBottom="8dp"
+          android:lineSpacingExtra="4dp" />
+
+        <TextView
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:text="\u2022 You can create a Wi‑Fi hotspot with your phone."
+          android:layout_marginBottom="8dp"
+          android:lineSpacingExtra="4dp" />
+
+        <TextView
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:text="\u2022 App shows IP addresses of this device. You should see the IP address of the Wi‑Fi hotspot."
+          android:layout_marginBottom="8dp"
+          android:lineSpacingExtra="4dp" />
+
+        <TextView
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:text="\u2022 Replace 'localhost' in the URL with the IP address of the Wi‑Fi hotspot.\nExample: rtmp://192.168.0.1:1935/publish/live"
+          android:layout_marginBottom="8dp"
+          android:lineSpacingExtra="4dp" />
+
+        <TextView
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:text="\u2022 Configure action camera to connect to the Wi‑Fi hotspot and publish to this URL."
+          android:lineSpacingExtra="4dp" />
+
+      </LinearLayout>
 
     </LinearLayout>
 
