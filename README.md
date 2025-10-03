@@ -4,6 +4,8 @@ Run RTMP media server as an Android app.
 
 Intended usage is mainly with [LifeStreamer](https://github.com/dimadesu/LifeStreamer) app, but can be used for anything you want really.
 
+![MediaSrvr Screenshot](docs/MediaSrvr-screenshot.png)
+
 ## Apps that can work together
 
 - [MediaSrvr](https://github.com/dimadesu/MediaSrvr) - Runs RTMP server on Android phone. You can publish RTMP stream to it from an action camera, for example.
