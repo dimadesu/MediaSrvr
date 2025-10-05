@@ -24,38 +24,41 @@
       android:paddingBottom="24dp">
 
       <TextView
-        android:id="@+id/titleHowTo"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="How to Use"
-        android:textStyle="bold"
-        android:textSize="22sp"
-        android:layout_marginBottom="12dp" />
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:text="Stop/start"
+          android:textStyle="bold"
+          android:textSize="20sp"
+          android:layout_marginBottom="8dp" />
 
       <TextView
-        android:id="@+id/p0"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="RTMP server starts when you open the app. To stop it tap the button in notification."
+        android:text="RTMP server starts automatically when the app is opened."
         android:textSize="16sp"
         android:layout_marginBottom="8dp" />
 
       <TextView
-        android:id="@+id/sub1"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Publish streams from streaming app on this device to the server on the same device"
-        android:textStyle="bold"
-        android:textSize="16sp"
-        android:layout_marginBottom="8dp" />
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:text="To stop the server tap the button in the notification."
+          android:textSize="16sp"
+          android:layout_marginBottom="8dp" />
 
       <TextView
-        android:id="@+id/p1"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Publish streams to:"
-        android:textSize="16sp"
-        android:layout_marginBottom="8dp" />
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:text="Publish and play streams on the same device"
+          android:textStyle="bold"
+          android:textSize="20sp"
+          android:layout_marginBottom="8dp" />
+
+      <TextView
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:text="To publish from a streaming app on this device to the server on the same device use this URL:"
+          android:textSize="16sp"
+          android:layout_marginBottom="8dp" />
 
       <TextView
         android:id="@+id/code1"
@@ -66,31 +69,30 @@
         android:textAppearance="?android:attr/textAppearanceSmall"
         android:typeface="monospace"
         android:text="rtmp://localhost:1935/publish/live"
-        android:textSize="15sp"
+        android:textSize="16sp"
         android:layout_marginBottom="12dp" />
 
       <TextView
         android:id="@+id/p2"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Play streams using the same URL."
+        android:text="Play streams on this device using the same URL. Use an app like VLC player."
         android:textSize="16sp"
         android:layout_marginBottom="16dp" />
 
       <TextView
-        android:id="@+id/sub2"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Publish streams from another device or camera to the server on this device"
-        android:textStyle="bold"
-        android:textSize="16sp"
-        android:layout_marginBottom="8dp" />
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:text="Publish stream from the other device to this device"
+          android:textStyle="bold"
+          android:textSize="20sp"
+          android:layout_marginBottom="8dp" />
 
       <TextView
         android:id="@+id/p3"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="For example, to publish stream from action camera to the server on your phone:"
+        android:text="For example, to publish stream from an action camera to the server on your phone:"
         android:textSize="16sp"
         android:layout_marginBottom="8dp" />
 
@@ -112,7 +114,7 @@
         <TextView
           android:layout_width="match_parent"
           android:layout_height="wrap_content"
-          android:text="\u2022 You can create a Wi‑Fi hotspot with your phone."
+          android:text="\u2022 You can create Wi‑Fi hotspot with your phone."
           android:textSize="16sp"
           android:layout_marginBottom="8dp"
           android:lineSpacingExtra="4dp" />
@@ -120,7 +122,7 @@
         <TextView
           android:layout_width="match_parent"
           android:layout_height="wrap_content"
-          android:text="\u2022 App builds RTMP URLs for each network this device is on."
+          android:text="\u2022 This app builds RTMP URLs for each network that this device is on."
           android:textSize="16sp"
           android:layout_marginBottom="8dp"
           android:lineSpacingExtra="4dp" />
@@ -128,7 +130,7 @@
         <TextView
           android:layout_width="match_parent"
           android:layout_height="wrap_content"
-          android:text="\u2022 Configure action camera to connect to the Wi‑Fi hotspot and publish to RTMP URL."
+          android:text="\u2022 Configure action camera to connect to the Wi‑Fi hotspot and publish to the RTMP URL that is not 'localhost'."
           android:textSize="16sp"
           android:lineSpacingExtra="4dp" />
 
