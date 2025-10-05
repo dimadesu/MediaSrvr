@@ -37,21 +37,21 @@ RTMP server starts automatically when the app is opened.
 
 To stop the server tap the button in the notification.
 
-### Publish and play streams on the same same device
+### Publish and play streams on the same device
 
-To publish from a streaming app on this device to the server on the same device use this URL:
+To publish from a streaming app on your phone to the server on the same phone use this URL:
 
 ```
 rtmp://localhost:1935/publish/live
 ```
 
-Play streams on this device using the same URL. Use an app like VLC player.
+Play streams on the same device using the same URL. Use an app like VLC player.
 
-### Publish stream from the other device to this device
+### Publish stream from another device to your phone
 
 For example, to publish stream from an action camera to the server on your phone:
 
-- Phone and action camera have to be on the same Wi-Fi.
+- Your phone and action camera have to be on the same Wi-Fi.
 - You can create Wi-Fi hotspot with your phone.
-- This app builds RTMP URLs for each network that this device is on.
+- The app builds RTMP URLs for each network that the phone is connected to.
 - Configure action camera to connect to the Wi-Fi hotspot and publish to the RTMP URL that is not `localhost`.
