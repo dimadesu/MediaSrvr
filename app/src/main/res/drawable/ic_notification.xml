@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+  android:width="24dp"
+  android:height="24dp"
+  android:viewportWidth="24"
+  android:viewportHeight="24">
+
+  <!-- Server icon with 3 horizontal units -->
+
+  <!-- Top server bar -->
+  <path
+    android:fillColor="#FFFFFF"
+    android:pathData="M3,4 L21,4 L21,8 L3,8 Z" />
+
+  <!-- Middle server bar -->
+  <path
+    android:fillColor="#FFFFFF"
+    android:pathData="M3,10 L21,10 L21,14 L3,14 Z" />
+
+  <!-- Bottom server bar -->
+  <path
+    android:fillColor="#FFFFFF"
+    android:pathData="M3,16 L21,16 L21,20 L3,20 Z" />
+
+</vector>
