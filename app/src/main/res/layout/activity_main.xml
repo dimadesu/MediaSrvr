@@ -6,12 +6,24 @@
     android:id="@+id/scrollView"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:fillViewport="true">
+    android:fillViewport="true"
+    android:background="@color/logBackground">
 
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         tools:context="com.dimadesu.mediasrvr.MainActivity">
+
+        <!-- White background section for URLs -->
+        <View
+            android:id="@+id/whiteBackground"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:background="#FFFFFF"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintBottom_toBottomOf="@+id/rvUrls" />
 
         <Button
             android:id="@+id/btHowToUse"
@@ -56,7 +68,6 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
             android:paddingBottom="16dp"
-            android:background="@color/logBackground"
             android:nestedScrollingEnabled="false"
             app:layout_constraintTop_toBottomOf="@+id/rvUrls"
             app:layout_constraintStart_toStartOf="parent"
