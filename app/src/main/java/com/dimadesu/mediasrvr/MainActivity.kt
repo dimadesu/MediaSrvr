@@ -77,6 +77,7 @@ class MainActivity : AppCompatActivity() {
         }
 
     // Initialize log UI and ViewModel once in onCreate so state survives config changes
+    val scrollView = findViewById<android.widget.ScrollView>(R.id.scrollView)
     val rvLogs = findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.rvLogs)
     val layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this)
     rvLogs.layoutManager = layoutManager
@@ -84,16 +85,21 @@ class MainActivity : AppCompatActivity() {
     rvLogs.adapter = logAdapterRv
         logViewModel = androidx.lifecycle.ViewModelProvider(this, androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.getInstance(application)).get(LogViewModel::class.java)
         logViewModel.lines.observe(this) { newLines ->
-            // Determine if we should auto-scroll: use RecyclerView.canScrollVertically(1)
-            // If canScrollVertically(1) == false then the view is already at the bottom.
-            val countBefore = (rvLogs.adapter?.itemCount) ?: 0
-            val atBottom = (countBefore == 0) || !rvLogs.canScrollVertically(1)
+            // Check if ScrollView is at bottom (user is viewing latest logs)
+            val atBottom = if (scrollView.childCount > 0) {
+                val child = scrollView.getChildAt(0)
+                scrollView.scrollY + scrollView.height >= child.height
+            } else {
+                true
+            }
 
             // Submit the new list via ListAdapter (diff applied on background thread)
             logAdapterRv.submitList(ArrayList(newLines)) {
-                // callback after diff applied: scroll only if we were at the bottom
+                // Auto-scroll only if user was already at the bottom
                 if (newLines.isNotEmpty() && atBottom) {
-                    rvLogs.post { rvLogs.scrollToPosition(newLines.size - 1) }
+                    scrollView.post {
+                        scrollView.fullScroll(android.view.View.FOCUS_DOWN)
+                    }
                 }
             }
         }
