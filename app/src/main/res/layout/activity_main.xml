@@ -1,62 +1,57 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout
+<ScrollView
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    tools:context="com.dimadesu.mediasrvr.MainActivity">
+    android:fillViewport="true">
 
-    <Button
-        android:id="@+id/btHowToUse"
-        android:layout_width="wrap_content"
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginStart="16dp"
-        android:layout_marginTop="16dp"
-        android:layout_marginEnd="16dp"
-        android:text="How to use"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintStart_toStartOf="parent" />
+        android:orientation="vertical"
+        tools:context="com.dimadesu.mediasrvr.MainActivity">
 
-    <TextView
-        android:id="@+id/tvUrlsTitle"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="16dp"
-        android:textStyle="bold"
-        android:layout_marginTop="16dp"
-        android:text="Tap on URL to copy"
-        android:textAppearance="?android:attr/textAppearanceMedium"
-        android:textSize="16sp"
-        app:layout_constraintTop_toBottomOf="@+id/btHowToUse"
-        app:layout_constraintStart_toStartOf="parent" />
+        <Button
+            android:id="@+id/btHowToUse"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:layout_marginTop="16dp"
+            android:layout_marginEnd="16dp"
+            android:text="How to use" />
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/rvUrls"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="16dp"
-        android:layout_marginEnd="16dp"
-        android:layout_marginTop="8dp"
-        android:layout_marginBottom="24dp"
-        android:nestedScrollingEnabled="false"
-        app:layout_constraintTop_toBottomOf="@+id/tvUrlsTitle"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        <TextView
+            android:id="@+id/tvUrlsTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:textStyle="bold"
+            android:layout_marginTop="16dp"
+            android:text="Tap on URL to copy"
+            android:textAppearance="?android:attr/textAppearanceMedium"
+            android:textSize="16sp" />
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/rvLogs"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:layout_marginTop="16dp"
-        android:paddingBottom="16dp"
-        android:background="@color/logBackground"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintLeft_toLeftOf="parent"
-        app:layout_constraintRight_toRightOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/rvUrls"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintVertical_bias="0.0" />
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvUrls"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:layout_marginEnd="16dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="24dp"
+            android:nestedScrollingEnabled="false" />
 
-</androidx.constraintlayout.widget.ConstraintLayout>
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvLogs"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:paddingBottom="16dp"
+            android:background="@color/logBackground"
+            android:nestedScrollingEnabled="false" />
+
+    </LinearLayout>
+
+</ScrollView>
