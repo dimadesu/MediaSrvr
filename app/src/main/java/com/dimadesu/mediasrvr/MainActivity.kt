@@ -119,14 +119,19 @@ class MainActivity : AppCompatActivity() {
 
                 val _nodeDirForUi = nodeDir
                 launch(Dispatchers.Main) {
-                    // Check battery optimization first
+                    // Check battery optimization - suggest but don't require it
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
                         if (!pm.isIgnoringBatteryOptimizations(packageName)) {
-                            // Request battery optimization exemption for reliable background operation
-                            pendingNodeDir = _nodeDirForUi
-                            pendingRequestBatteryOptimization = true
-                            return@launch
+                            // Offer battery optimization exemption, but don't block app startup
+                            val prefs = getSharedPreferences("MediaSrvr", Context.MODE_PRIVATE)
+                            val askedBefore = prefs.getBoolean("asked_battery_optimization", false)
+                            if (!askedBefore) {
+                                pendingNodeDir = _nodeDirForUi
+                                pendingRequestBatteryOptimization = true
+                                prefs.edit().putBoolean("asked_battery_optimization", true).apply()
+                                return@launch
+                            }
                         }
                     }
                     
