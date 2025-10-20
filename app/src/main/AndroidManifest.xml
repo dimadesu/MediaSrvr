@@ -14,6 +14,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <!-- Required on Android 13+ to request notifications at runtime -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Request to disable battery optimizations for reliable background operation -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
         android:allowBackup="true"
@@ -32,7 +34,10 @@
             </intent-filter>
         </activity>
         <activity android:name=".HowToUseActivity" android:exported="false" />
-        <service android:name=".ForegroundService" android:exported="false" />
+        <service
+            android:name=".ForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 
 </manifest>

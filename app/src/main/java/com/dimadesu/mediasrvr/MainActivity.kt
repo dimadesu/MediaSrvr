@@ -7,8 +7,11 @@ import android.content.Intent
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.content.res.AssetManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -26,6 +29,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkRequest
 import android.net.LinkProperties
+import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -53,7 +57,9 @@ class MainActivity : AppCompatActivity() {
     // If we need to request POST_NOTIFICATIONS, store nodeDir here until the user responds.
     private var pendingNodeDir: String? = null
     private val REQ_POST_NOTIFICATIONS = 1001
+    private val REQ_BATTERY_OPTIMIZATION = 1002
     private var pendingRequestNotification = false
+    private var pendingRequestBatteryOptimization = false
 
     // ViewModel that holds log lines across configuration changes
     private lateinit var logViewModel: LogViewModel
@@ -113,6 +119,17 @@ class MainActivity : AppCompatActivity() {
 
                 val _nodeDirForUi = nodeDir
                 launch(Dispatchers.Main) {
+                    // Check battery optimization first
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                        if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+                            // Request battery optimization exemption for reliable background operation
+                            pendingNodeDir = _nodeDirForUi
+                            pendingRequestBatteryOptimization = true
+                            return@launch
+                        }
+                    }
+                    
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
                             // permission already granted -> start service then node
@@ -153,6 +170,25 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        
+        // Handle battery optimization request first
+        if (pendingRequestBatteryOptimization && pendingNodeDir != null) {
+            pendingRequestBatteryOptimization = false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                try {
+                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
+                    startActivityForResult(intent, REQ_BATTERY_OPTIMIZATION)
+                } catch (e: Exception) {
+                    Log.w("MainActivity", "Failed to request battery optimization exemption: ${e.message}")
+                    // Continue anyway
+                    pendingRequestNotification = true
+                }
+            }
+            return
+        }
+        
         if (pendingRequestNotification && pendingNodeDir != null) {
             pendingRequestNotification = false
             // Request notifications permission now that the activity is resumed and in foreground
@@ -498,4 +534,29 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_BATTERY_OPTIMIZATION) {
+            // Battery optimization request completed, now check if we need notification permission
+            val nodeDir = pendingNodeDir
+            if (nodeDir != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                        startServiceAndNode(nodeDir)
+                        pendingNodeDir = null
+                    } else {
+                        // Request notification permission next
+                        pendingRequestNotification = true
+                    }
+                } else {
+                    // No notification permission needed
+                    startServiceAndNode(nodeDir)
+                    pendingNodeDir = null
+                }
+            }
+        }
+    }
 }
+
