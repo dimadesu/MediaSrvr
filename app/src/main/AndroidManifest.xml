@@ -12,10 +12,10 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <!-- Required to call startForeground on services -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Required for connectedDevice foreground service type on Android 14+ -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <!-- Required on Android 13+ to request notifications at runtime -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Request to disable battery optimizations for reliable background operation -->
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
         android:allowBackup="true"
@@ -37,7 +37,7 @@
         <service
             android:name=".ForegroundService"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
+            android:foregroundServiceType="connectedDevice" />
     </application>
 
 </manifest>
