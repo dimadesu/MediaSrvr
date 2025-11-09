@@ -109,6 +109,17 @@ class MainActivity : AppCompatActivity() {
             // Use lifecycleScope to perform IO work and then switch to UI for permission/service start
             lifecycleScope.launch(Dispatchers.IO) {
                 val nodeDir = applicationContext.filesDir.absolutePath + "/nodejs-project"
+                
+                // Clear old log file to prevent showing stale logs on startup
+                try {
+                    val logFile = File("$nodeDir/nms.log")
+                    if (logFile.exists()) {
+                        logFile.delete()
+                    }
+                } catch (e: Exception) {
+                    // Ignore errors clearing log file
+                }
+                
                 if (wasAPKUpdated()) {
                     val nodeDirReference = File(nodeDir)
                     if (nodeDirReference.exists()) {
