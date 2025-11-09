@@ -29,7 +29,7 @@ class LogViewModel(application: Application) : AndroidViewModel(application) {
                     val logDir = getApplication<Application>().filesDir.absolutePath + "/nodejs-project"
                     val logFile = File("$logDir/nms.log")
                     val resultLines = if (!logFile.exists()) {
-                        listOf("(no nms.log found at ${logFile.absolutePath})")
+                        emptyList() // Don't show "not found" message, just keep empty
                     } else {
                         val tail = LinkedList<String>()
                         val br = BufferedReader(FileReader(logFile))
