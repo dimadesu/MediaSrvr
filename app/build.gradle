@@ -68,6 +68,16 @@ android {
             signingConfig signingConfigs.release
         }
     }
+    
+    // Custom APK output names
+    applicationVariants.all { variant ->
+        variant.outputs.all { output ->
+            def versionName = variant.versionName
+            def buildType = variant.buildType.name
+            outputFileName = "MediaSrvr-v${versionName}-${buildType}.apk"
+        }
+    }
+
     // Use modern Java compatibility to avoid obsolete source/target warnings
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_11
@@ -118,5 +128,29 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
     kotlinOptions {
         jvmTarget = "11"
+    }
+}
+
+// Custom AAB output names - create copy so Android Studio can still locate original
+tasks.whenTaskAdded { task ->
+    if (task.name.startsWith('bundle')) {
+        task.doLast {
+            def variant = task.name.replace('bundle', '').uncapitalize()
+            def versionName = android.defaultConfig.versionName
+            def buildType = variant.toLowerCase()
+            
+            def outputDir = file("${buildDir}/outputs/bundle/${variant}")
+            if (outputDir.exists()) {
+                outputDir.listFiles().each { file ->
+                    if (file.name.endsWith('.aab')) {
+                        def newName = "MediaSrvr-v${versionName}-${buildType}.aab"
+                        def newFile = new File(file.parent, newName)
+                        // Copy instead of rename so Studio can locate the original
+                        java.nio.file.Files.copy(file.toPath(), newFile.toPath(), 
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                    }
+                }
+            }
+        }
     }
 }
