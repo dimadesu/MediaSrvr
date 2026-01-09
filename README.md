@@ -2,6 +2,8 @@
 
 Run RTMP media server as an Android app.
 
+Publish and watch streams to/from RTMP server that is running on an Android device. This app automatically generates RTMP URLs to use for each network the device is on. Copy URLs by tapping on them. Find instructions on how to use it inside the app.
+
 Intended usage is mainly with [LifeStreamer](https://github.com/dimadesu/LifeStreamer) app, but can be used for anything you want really.
 
 ![MediaSrvr Screenshot](docs/MediaSrvr-screenshot.png)
