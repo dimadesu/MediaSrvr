@@ -136,9 +136,14 @@ class MainActivity : AppCompatActivity() {
                             // permission already granted -> start service then node
                             startServiceAndNode(_nodeDirForUi)
                         } else {
-                            // mark that we need to request permission when the activity is resumed
+                            // mark that we need to request permission and save nodeDir
                             pendingNodeDir = _nodeDirForUi
                             pendingRequestNotification = true
+                            // Request permission immediately if activity is already resumed
+                            if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
+                                pendingRequestNotification = false
+                                ActivityCompat.requestPermissions(this@MainActivity, arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_POST_NOTIFICATIONS)
+                            }
                         }
                     } else {
                         // Older Android: no runtime notification permission required
