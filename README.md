@@ -6,13 +6,17 @@ Publish and watch streams to/from RTMP server that is running on an Android devi
 
 Intended usage is mainly with [LifeStreamer](https://github.com/dimadesu/LifeStreamer) app, but can be used for anything you want really.
 
+## Become alpha tester
+
+To download app from Google Play store please join alpha testing first. This will also help to eventually publish app publicly. See more details [here](https://gist.github.com/dimadesu/00283dc48a672d6d9468126adeaf8566).
+
 ![MediaSrvr Screenshot](docs/MediaSrvr-screenshot.png)
 
 ## Apps that can work together
 
 See the [demo video on YouTube](https://www.youtube.com/watch?v=_zlWsQYxrE4).
 
-- [MediaSrvr](https://github.com/dimadesu/MediaSrvr) - Runs RTMP server on Android phone. You can publish RTMP stream to it from an action camera, for example.
+- MediaSrvr - Runs RTMP server on Android phone. You can publish RTMP stream to it from an action camera, for example.
 - [LifeStreamer](https://github.com/dimadesu/LifeStreamer) - Can use RTMP as source: playback RTMP stream from server and restream it as SRT with great dynamic bitrate.
 - [Bond Bunny](https://github.com/dimadesu/bond-bunny) - You can use LifeStreamer to publish SRT stream into Bond Bunny app. Bond Bunny accepts SRT as input and forwards packets to SRTLA server like Belabox Cloud. Uses multiple networks to improve stream quality.
 
