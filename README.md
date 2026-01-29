@@ -63,3 +63,7 @@ For example, to publish stream from an action camera to the server on your phone
 - You can create Wi-Fi hotspot with your phone.
 - The app builds RTMP URLs for each network that the phone is connected to.
 - Configure action camera to connect to the Wi-Fi hotspot and publish to the RTMP URL that is not `localhost`.
+
+### Exclude an app from battery optimisations
+
+To make sure Android does not limit the app in any way when it's running in the background, go to Settings > Apps > [Select App] > Battery > Unrestricted.
