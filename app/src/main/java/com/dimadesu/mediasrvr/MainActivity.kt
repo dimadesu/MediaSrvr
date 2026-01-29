@@ -56,6 +56,9 @@ class MainActivity : AppCompatActivity() {
     private val REQ_POST_NOTIFICATIONS = 1001
     private var pendingRequestNotification = false
 
+    // Flag to track when old logs have been cleared (prevents flash of stale logs)
+    private var logCleared = false
+
     // ViewModel that holds log lines across configuration changes
     private lateinit var logViewModel: LogViewModel
     private lateinit var logAdapter: ArrayAdapter<String>
@@ -118,6 +121,11 @@ class MainActivity : AppCompatActivity() {
                     }
                 } catch (e: Exception) {
                     // Ignore errors clearing log file
+                }
+                // Mark log as cleared and start polling now that it's safe
+                logCleared = true
+                launch(Dispatchers.Main) {
+                    logViewModel.startPolling()
                 }
                 
                 if (wasAPKUpdated()) {
@@ -207,7 +215,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
-        logViewModel.startPolling()
+        // Only start polling if log has been cleared (prevents flash of old logs)
+        if (logCleared) {
+            logViewModel.startPolling()
+        }
         // Register network callback to auto-refresh IPs on changes
         try {
             connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
