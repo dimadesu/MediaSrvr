@@ -100,7 +100,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:layout_marginBottom="16dp">
+                android:layout_marginBottom="8dp">
 
                 <TextView
                     android:layout_width="match_parent"
@@ -134,6 +134,22 @@
                     android:lineSpacingExtra="4dp" />
 
             </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Exclude an app from battery optimisations"
+                android:textStyle="bold"
+                android:textSize="20sp"
+                android:layout_marginBottom="16dp" />
+
+            <TextView
+                android:id="@+id/p4"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="To make sure Android does not limit the app in any way when it's running in the background, go to Settings > Apps > [Select App] > Battery > Unrestricted."
+                android:textSize="16sp"
+                android:layout_marginBottom="8dp" />
 
         </LinearLayout>
 
