@@ -159,6 +159,11 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
+        } else {
+            // Node already started in a previous Activity instance (static flag).
+            // Ensure log polling resumes for this new Activity instance.
+            logCleared = true
+            logViewModel.startPolling()
         }
 
         // Initialize URL RecyclerView
