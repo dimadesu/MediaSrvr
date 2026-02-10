@@ -55,6 +55,9 @@ find_library( # Sets the name of the path variable.
 # can link multiple libraries, such as libraries you define in this
 # build script, prebuilt third-party libraries, or system libraries.
 
+# Align ELF LOAD segments to 16 KB for Android 15+ (Google Play requirement)
+target_link_options(native-lib PRIVATE "-Wl,-z,max-page-size=16384")
+
 target_link_libraries( # Specifies the target library.
                        native-lib
 

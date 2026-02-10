@@ -4,7 +4,7 @@ apply plugin: 'kotlin-android'
 android {
     namespace 'com.dimadesu.mediasrvr'
     compileSdkVersion 35
-    ndkVersion "25.2.9519653"
+    ndkVersion "27.0.12077973"
     defaultConfig {
     applicationId "com.dimadesu.mediasrvr"
     minSdkVersion 21
@@ -18,7 +18,8 @@ android {
             externalNativeBuild {
                 cmake {
                     cppFlags ""
-                    arguments "-DANDROID_STL=c++_shared"
+                    arguments "-DANDROID_STL=c++_shared",
+                              "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
                 }
             }
         } else {
