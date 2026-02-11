@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.content.res.AssetManager
 import android.os.Build
 import android.os.Bundle
+import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -70,6 +71,7 @@ class MainActivity : AppCompatActivity() {
     external fun startNodeWithArguments(arguments: Array<String>): Int
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
