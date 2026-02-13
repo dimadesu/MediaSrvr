@@ -1,14 +1,10 @@
-# MediaSrvr - RTMP Media Server Android App
+# MediaSrvr - run RTMP media server as an Android app
 
-Run RTMP media server as an Android app.
+[<img src="docs/google-play-store.svg">](https://play.google.com/store/apps/details?id=com.dimadesu.mediasrvr)
 
 Publish and watch streams to/from RTMP server that is running on an Android device. This app automatically generates RTMP URLs to use for each network the device is on. Copy URLs by tapping on them. Find instructions on how to use it inside the app.
 
 Intended usage is mainly with [LifeStreamer](https://github.com/dimadesu/LifeStreamer) app, but can be used for anything you want really.
-
-## Become alpha tester
-
-To download app from Google Play store please join alpha testing first. This will also help to eventually publish app publicly. See more details [here](https://gist.github.com/dimadesu/00283dc48a672d6d9468126adeaf8566).
 
 ![MediaSrvr Screenshot](docs/MediaSrvr-screenshot.png)
 
@@ -20,7 +16,7 @@ See the [demo video on YouTube](https://www.youtube.com/watch?v=_zlWsQYxrE4).
 - [LifeStreamer](https://github.com/dimadesu/LifeStreamer) - Can use RTMP as source: playback RTMP stream from server and restream it as SRT with great dynamic bitrate.
 - [Bond Bunny](https://github.com/dimadesu/bond-bunny) - You can use LifeStreamer to publish SRT stream into Bond Bunny app. Bond Bunny accepts SRT as input and forwards packets to SRTLA server like Belabox Cloud. Uses multiple networks to improve stream quality.
 
-Discord server: https://discord.gg/2UzEkU2AJW
+Share ideas or report issues in Discord https://discord.gg/2UzEkU2AJW or create Git issues.
 
 Uses:
 
@@ -28,9 +24,19 @@ Uses:
 - Runs NMS using [Node.js mobile](https://github.com/nodejs-mobile/nodejs-mobile).
 - Project is based on [Node.js mobile sample app](https://github.com/nodejs-mobile/nodejs-mobile-samples/tree/master/android/native-gradle-node-folder) - needed a lot of updates.
 
-## How to Install
+## How to install
 
-I am releasing APK files via [GitHub Releases](https://github.com/dimadesu/MediaSrvr/releases).
+### Google Play Store
+
+You can install app from Google Play Store. Follow [this link](https://play.google.com/store/apps/details?id=com.dimadesu.mediasrvr).
+
+#### Become alpha tester (aka "closed testing")
+
+Please join alpha testing to test early versions of the app. More details [here](https://gist.github.com/dimadesu/00283dc48a672d6d9468126adeaf8566).
+
+### GitHub releases
+
+I was originally releasing .apk files using [GitHub releases](https://github.com/dimadesu/MediaSrvr/releases). I plan to continue releasing on GitHub as a backup.
 
 - Open [GitHub Releases page](https://github.com/dimadesu/MediaSrvr/releases) on your Android device.
 - Download APK file.
