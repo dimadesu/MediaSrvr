@@ -59,6 +59,7 @@ class MainActivity : AppCompatActivity() {
         // Survives Activity re-creation during permission dialog / config change
         var pendingNodeDir: String? = null
         var pendingRequestNotification = false
+        var _permissionRequestInFlight = false
     }
 
     private val REQ_POST_NOTIFICATIONS = 1001
@@ -199,11 +200,12 @@ class MainActivity : AppCompatActivity() {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
                 Log.d(TAG, "Notification permission already granted, starting service+node")
                 startServiceAndNode(nodeDir)
-            } else {
+            } else if (!_permissionRequestInFlight) {
                 Log.d(TAG, "Requesting notification permission")
                 pendingRequestNotification = true
                 if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
                     pendingRequestNotification = false
+                    _permissionRequestInFlight = true
                     ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_POST_NOTIFICATIONS)
                 }
             }
@@ -214,8 +216,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (pendingRequestNotification && pendingNodeDir != null) {
+        if (pendingRequestNotification && pendingNodeDir != null && !_permissionRequestInFlight) {
             pendingRequestNotification = false
+            _permissionRequestInFlight = true
             Log.d(TAG, "onResume: requesting deferred notification permission")
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_POST_NOTIFICATIONS)
         }
@@ -546,6 +549,7 @@ class MainActivity : AppCompatActivity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQ_POST_NOTIFICATIONS) {
+            _permissionRequestInFlight = false
             var granted = false
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 granted = true
@@ -560,7 +564,10 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread { startServiceAndNode(nodeDir) }
             } else {
                 Toast.makeText(this, "Notification permission denied. Node will run without foreground notification.", Toast.LENGTH_LONG).show()
-                lifecycleScope.launch(Dispatchers.IO) { startNodeWithArguments(arrayOf("node", "$nodeDir/main.js")) }
+                _nodeProcessStarted = true
+                Thread {
+                    startNodeWithArguments(arrayOf("node", "$nodeDir/main.js"))
+                }.start()
             }
         }
     }
