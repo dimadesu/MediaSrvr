@@ -69,6 +69,13 @@ android {
             signingConfig signingConfigs.release
         }
     }
+
+    // Store native libraries uncompressed so they can be mmap'd directly (required for 16 KB page alignment)
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging = false
+        }
+    }
     
     // Custom APK output names
     applicationVariants.all { variant ->
