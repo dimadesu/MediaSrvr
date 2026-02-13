@@ -43,7 +43,7 @@ android {
                 abiFilters availableAbis.toArray(new String[0])
             } else {
                 // Fall back to common ABIs if no prebuilt binaries found
-                abiFilters "arm64-v8a", "x86_64"
+                abiFilters "armeabi-v7a", "x86", "arm64-v8a", "x86_64"
             }
         }
     }
