@@ -563,7 +563,7 @@ class MainActivity : AppCompatActivity() {
             if (granted) {
                 runOnUiThread { startServiceAndNode(nodeDir) }
             } else {
-                Toast.makeText(this, "Notification permission denied. Node will run without foreground notification.", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Notification permission denied", Toast.LENGTH_LONG).show()
                 _nodeProcessStarted = true
                 Thread {
                     startNodeWithArguments(arrayOf("node", "$nodeDir/main.js"))
