@@ -70,10 +70,12 @@ android {
         }
     }
 
-    // Store native libraries uncompressed so they can be mmap'd directly (required for 16 KB page alignment)
+    // For AAB (Play Store): uncompressed libs for 16 KB page alignment + mmap
+    // For APK (GitHub releases): compressed libs for smaller download size
+    def isApkBuild = gradle.startParameter.taskNames.any { it.toLowerCase().contains("assemble") }
     packagingOptions {
         jniLibs {
-            useLegacyPackaging = false
+            useLegacyPackaging = isApkBuild
         }
     }
     
