@@ -22,7 +22,6 @@ allprojects {
         // Required to resolve Android and other artifacts
         maven { url "https://maven.google.com" }
         mavenCentral()
-        mavenCentral()
     }
 }
 
