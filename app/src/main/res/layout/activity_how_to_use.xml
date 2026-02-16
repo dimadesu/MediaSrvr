@@ -78,7 +78,7 @@
                 android:layout_height="wrap_content"
                 android:text="Play streams on this device using the same URL. Use an app like VLC player."
                 android:textSize="16sp"
-                android:layout_marginBottom="16dp" />
+                android:layout_marginBottom="8dp" />
 
             <TextView
                 android:layout_width="match_parent"
@@ -108,31 +108,27 @@
                     android:layout_height="wrap_content"
                     android:text="\u2022 Phone and action camera have to be on the same Wi‑Fi."
                     android:textSize="16sp"
-                    android:layout_marginBottom="8dp"
-                    android:lineSpacingExtra="4dp" />
+                    android:layout_marginBottom="8dp" />
 
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="\u2022 You can create Wi‑Fi hotspot with your phone."
                     android:textSize="16sp"
-                    android:layout_marginBottom="8dp"
-                    android:lineSpacingExtra="4dp" />
+                    android:layout_marginBottom="8dp" />
 
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="\u2022 This app builds RTMP URLs for each network that this device is on."
                     android:textSize="16sp"
-                    android:layout_marginBottom="8dp"
-                    android:lineSpacingExtra="4dp" />
+                    android:layout_marginBottom="8dp" />
 
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="\u2022 Configure action camera to connect to the Wi‑Fi hotspot and publish to the RTMP URL that is not 'localhost'."
-                    android:textSize="16sp"
-                    android:lineSpacingExtra="4dp" />
+                    android:textSize="16sp" />
 
             </LinearLayout>
 
@@ -142,7 +138,7 @@
                 android:text="Exclude an app from battery optimisations"
                 android:textStyle="bold"
                 android:textSize="20sp"
-                android:layout_marginBottom="16dp" />
+                android:layout_marginBottom="8dp" />
 
             <TextView
                 android:id="@+id/p4"
