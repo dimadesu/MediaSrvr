@@ -52,14 +52,16 @@ class MainActivity : AppCompatActivity() {
 
         private const val TAG = "MediaSrvr"
 
-        // Tracks whether we've begun the one-time startup (asset copy etc.)
-        var _startedNodeAlready = false
-        // Tracks whether startNodeWithArguments was actually called
-        var _nodeProcessStarted = false
-        // Survives Activity re-creation during permission dialog / config change
-        var pendingNodeDir: String? = null
-        var pendingRequestNotification = false
-        var _permissionRequestInFlight = false
+        /** One-time startup state machine (survives Activity recreation via static). */
+        enum class Startup {
+            NOT_STARTED,           // Fresh launch, nothing done yet
+            PREPARING,             // Asset copy / IO in progress
+            AWAITING_PERMISSION,   // Waiting to show or showing the notification permission dialog
+            PERMISSION_REQUESTED,  // System dialog is visible (guards duplicate requestPermissions calls)
+            RUNNING                // Node.js process has been started
+        }
+        var startupState = Startup.NOT_STARTED
+        var pendingNodeDir: String? = null  // node project path, set during PREPARING
     }
 
     private val REQ_POST_NOTIFICATIONS = 1001
@@ -118,8 +120,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        if (!_startedNodeAlready) {
-            _startedNodeAlready = true
+        if (startupState == Startup.NOT_STARTED) {
+            startupState = Startup.PREPARING
             Log.d(TAG, "First run: starting asset copy and Node setup")
             // Use lifecycleScope to perform IO work and then switch to UI for permission/service start
             lifecycleScope.launch(Dispatchers.IO) {
@@ -159,12 +161,12 @@ class MainActivity : AppCompatActivity() {
             }
         } else {
             // Activity recreated (config change, permission dialog, etc.)
-            Log.d(TAG, "Activity recreated: _nodeProcessStarted=$_nodeProcessStarted pendingNodeDir=$pendingNodeDir pendingRequestNotification=$pendingRequestNotification")
+            Log.d(TAG, "Activity recreated: startupState=$startupState pendingNodeDir=$pendingNodeDir")
             logCleared = true
             logViewModel.startPolling()
 
             // If Node hasn't actually started yet, continue the startup flow
-            if (!_nodeProcessStarted && pendingNodeDir != null) {
+            if (startupState != Startup.RUNNING && startupState != Startup.PERMISSION_REQUESTED && pendingNodeDir != null) {
                 requestPermissionOrStart()
             }
         }
@@ -200,12 +202,11 @@ class MainActivity : AppCompatActivity() {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
                 Log.d(TAG, "Notification permission already granted, starting service+node")
                 startServiceAndNode(nodeDir)
-            } else if (!_permissionRequestInFlight) {
+            } else if (startupState != Startup.PERMISSION_REQUESTED) {
                 Log.d(TAG, "Requesting notification permission")
-                pendingRequestNotification = true
+                startupState = Startup.AWAITING_PERMISSION
                 if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
-                    pendingRequestNotification = false
-                    _permissionRequestInFlight = true
+                    startupState = Startup.PERMISSION_REQUESTED
                     ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_POST_NOTIFICATIONS)
                 }
             }
@@ -216,9 +217,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (pendingRequestNotification && pendingNodeDir != null && !_permissionRequestInFlight) {
-            pendingRequestNotification = false
-            _permissionRequestInFlight = true
+        if (startupState == Startup.AWAITING_PERMISSION && pendingNodeDir != null) {
+            startupState = Startup.PERMISSION_REQUESTED
             Log.d(TAG, "onResume: requesting deferred notification permission")
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_POST_NOTIFICATIONS)
         }
@@ -239,7 +239,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Start Node on a background thread (not lifecycleScope) so it survives Activity recreation
-        _nodeProcessStarted = true
+        startupState = Startup.RUNNING
         Log.d(TAG, "Starting Node.js process")
         Thread {
             startNodeWithArguments(arrayOf("node", "$nodeDir/main.js"))
@@ -549,7 +549,6 @@ class MainActivity : AppCompatActivity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQ_POST_NOTIFICATIONS) {
-            _permissionRequestInFlight = false
             var granted = false
             if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 granted = true
@@ -564,7 +563,7 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread { startServiceAndNode(nodeDir) }
             } else {
                 Toast.makeText(this, "Notification permission denied", Toast.LENGTH_LONG).show()
-                _nodeProcessStarted = true
+                startupState = Startup.RUNNING
                 Thread {
                     startNodeWithArguments(arrayOf("node", "$nodeDir/main.js"))
                 }.start()
