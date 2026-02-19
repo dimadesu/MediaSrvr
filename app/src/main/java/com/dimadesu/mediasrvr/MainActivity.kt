@@ -55,7 +55,7 @@ class MainActivity : AppCompatActivity() {
         /** One-time startup state machine (survives Activity recreation via static). */
         enum class Startup {
             NOT_STARTED,           // Fresh launch, nothing done yet
-            PREPARING,             // Asset copy / IO in progress
+            DELETING_LOGS_COPYING_ASSETS,  // Asset copy / IO in progress
             AWAITING_RESUME_TO_REQUEST_PERMISSION,  // Need to request permission; deferred until Activity is RESUMED
             PERMISSION_REQUESTED,  // System dialog is visible (guards duplicate requestPermissions calls)
             RUNNING                // Node.js process has been started
@@ -124,7 +124,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (startupState == Startup.NOT_STARTED) {
-            startupState = Startup.PREPARING
+            startupState = Startup.DELETING_LOGS_COPYING_ASSETS
             Log.d(TAG, "First run: starting asset copy and Node setup")
             // Use lifecycleScope to perform IO work and then switch to UI for permission/service start
             lifecycleScope.launch(Dispatchers.IO) {
