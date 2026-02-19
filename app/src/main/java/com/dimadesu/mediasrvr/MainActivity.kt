@@ -166,8 +166,8 @@ class MainActivity : AppCompatActivity() {
             logCleared = true
             logViewModel.startPolling()
 
-            // If Node hasn't actually started yet, continue the startup flow
-            if (startupState != Startup.RUNNING && startupState != Startup.PERMISSION_REQUESTED && startupState != Startup.PREPARING) {
+            // If we were waiting for the permission dialog when the Activity was recreated, retry
+            if (startupState == Startup.AWAITING_PERMISSION) {
                 requestPermissionOrStart()
             }
         }
