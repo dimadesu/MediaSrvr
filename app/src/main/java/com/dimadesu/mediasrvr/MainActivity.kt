@@ -240,7 +240,11 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (permissionRequest == PermissionRequest.AWAITING_RESUME) {
-            requestPermissionIfNeeded()
+            // We're guaranteed to be RESUMED here, so request directly
+            // (don't go through requestPermissionIfNeeded which re-checks lifecycle state)
+            permissionRequest = PermissionRequest.IN_FLIGHT
+            Log.d(TAG, "Requesting notification permission (from onResume)")
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_POST_NOTIFICATIONS)
         }
     }
 
