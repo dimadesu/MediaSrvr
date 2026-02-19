@@ -95,13 +95,13 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this@MainActivity, HowToUseActivity::class.java))
         }
 
-    // Initialize log UI and ViewModel once in onCreate so state survives config changes
-    val scrollView = findViewById<android.widget.ScrollView>(R.id.scrollView)
-    val rvLogs = findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.rvLogs)
-    val layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this)
-    rvLogs.layoutManager = layoutManager
-    val logAdapterRv = LogAdapter()
-    rvLogs.adapter = logAdapterRv
+        // Initialize log UI and ViewModel once in onCreate so state survives config changes
+        val scrollView = findViewById<android.widget.ScrollView>(R.id.scrollView)
+        val rvLogs = findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.rvLogs)
+        val layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this)
+        rvLogs.layoutManager = layoutManager
+        val logAdapterRv = LogAdapter()
+        rvLogs.adapter = logAdapterRv
         logViewModel = androidx.lifecycle.ViewModelProvider(this, androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.getInstance(application)).get(LogViewModel::class.java)
         logViewModel.lines.observe(this) { newLines ->
             // Check if ScrollView is at bottom (user is viewing latest logs)
