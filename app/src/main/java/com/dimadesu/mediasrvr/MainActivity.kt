@@ -61,7 +61,6 @@ class MainActivity : AppCompatActivity() {
             RUNNING                // Node.js process has been started
         }
         var startupState = Startup.NOT_STARTED
-        var pendingNodeDir: String? = null  // node project path, set during PREPARING
     }
 
     private val REQ_POST_NOTIFICATIONS = 1001
@@ -76,6 +75,10 @@ class MainActivity : AppCompatActivity() {
     private var connectivityManager: ConnectivityManager? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var hotspotReceiver: android.content.BroadcastReceiver? = null
+
+    /** Deterministic path to the Node.js project directory. */
+    private val nodeDir: String
+        get() = applicationContext.filesDir.absolutePath + "/nodejs-project"
 
     external fun startNodeWithArguments(arguments: Array<String>): Int
 
@@ -125,7 +128,7 @@ class MainActivity : AppCompatActivity() {
             Log.d(TAG, "First run: starting asset copy and Node setup")
             // Use lifecycleScope to perform IO work and then switch to UI for permission/service start
             lifecycleScope.launch(Dispatchers.IO) {
-                val nodeDir = applicationContext.filesDir.absolutePath + "/nodejs-project"
+                val nodeDir = this@MainActivity.nodeDir
                 
                 // Clear old log file to prevent showing stale logs on startup
                 try {
@@ -153,20 +156,18 @@ class MainActivity : AppCompatActivity() {
                     Log.d(TAG, "Assets copied")
                 }
 
-                // Save nodeDir statically so it survives Activity recreation
-                pendingNodeDir = nodeDir
                 launch(Dispatchers.Main) {
                     requestPermissionOrStart()
                 }
             }
         } else {
             // Activity recreated (config change, permission dialog, etc.)
-            Log.d(TAG, "Activity recreated: startupState=$startupState pendingNodeDir=$pendingNodeDir")
+            Log.d(TAG, "Activity recreated: startupState=$startupState")
             logCleared = true
             logViewModel.startPolling()
 
             // If Node hasn't actually started yet, continue the startup flow
-            if (startupState != Startup.RUNNING && startupState != Startup.PERMISSION_REQUESTED && pendingNodeDir != null) {
+            if (startupState != Startup.RUNNING && startupState != Startup.PERMISSION_REQUESTED && startupState != Startup.PREPARING) {
                 requestPermissionOrStart()
             }
         }
@@ -194,10 +195,9 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * Check notification permission and either request it or start the service + Node.
-     * Safe to call from any Activity instance since pendingNodeDir is static.
      */
     private fun requestPermissionOrStart() {
-        val nodeDir = pendingNodeDir ?: return
+        val nodeDir = this.nodeDir
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
                 Log.d(TAG, "Notification permission already granted, starting service+node")
@@ -217,7 +217,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (startupState == Startup.AWAITING_PERMISSION && pendingNodeDir != null) {
+        if (startupState == Startup.AWAITING_PERMISSION) {
             startupState = Startup.PERMISSION_REQUESTED
             Log.d(TAG, "onResume: requesting deferred notification permission")
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_POST_NOTIFICATIONS)
@@ -549,23 +549,15 @@ class MainActivity : AppCompatActivity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQ_POST_NOTIFICATIONS) {
-            var granted = false
-            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                granted = true
-            }
-
-            val nodeDir = pendingNodeDir
-            pendingNodeDir = null
-
-            if (nodeDir == null) return
-
+            val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
             if (granted) {
-                runOnUiThread { startServiceAndNode(nodeDir) }
+                startServiceAndNode(nodeDir)
             } else {
                 Toast.makeText(this, "Notification permission denied", Toast.LENGTH_LONG).show()
                 startupState = Startup.RUNNING
+                val dir = nodeDir
                 Thread {
-                    startNodeWithArguments(arrayOf("node", "$nodeDir/main.js"))
+                    startNodeWithArguments(arrayOf("node", "$dir/main.js"))
                 }.start()
             }
         }
