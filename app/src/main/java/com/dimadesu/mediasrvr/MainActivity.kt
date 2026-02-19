@@ -245,9 +245,8 @@ class MainActivity : AppCompatActivity() {
         if (startupState == Startup.RUNNING) return
         startupState = Startup.RUNNING
         Log.d(TAG, "Starting Node.js process")
-        val dir = nodeDir
         Thread {
-            startNodeWithArguments(arrayOf("node", "$dir/main.js"))
+            startNodeWithArguments(arrayOf("node", "$nodeDir/main.js"))
         }.start()
     }
 
