@@ -52,14 +52,20 @@ class MainActivity : AppCompatActivity() {
 
         private const val TAG = "MediaSrvr"
 
-        // Tracks whether we've begun the one-time startup (asset copy etc.)
-        var _startedNodeAlready = false
-        // Tracks whether startNodeWithArguments was actually called
-        var _nodeProcessStarted = false
-        // Survives Activity re-creation during permission dialog / config change
-        var pendingNodeDir: String? = null
-        var pendingRequestNotification = false
-        var _permissionRequestInFlight = false
+        /**
+         * Two parallel prerequisites must be satisfied before Node.js can start:
+         *   1. Assets ready  – log deleted, assets copied (IO thread)
+         *   2. Permission resolved – notification permission granted/denied/not-needed (Main thread)
+         * Both tracks run concurrently; [tryStart] launches Node once both are done.
+         */
+        private var startupInitiated = false          // Has the startup sequence been kicked off?
+        @Volatile private var assetsReady = false     // IO work completed? (@Volatile: written on IO, read on Main)
+        private var permissionResult: Boolean? = null  // null = pending, true = granted, false = denied
+        private var nodeStarted = false                // Double-launch guard
+
+        /** Permission-request lifecycle sub-state. */
+        private enum class PermissionRequest { NONE, AWAITING_RESUME, IN_FLIGHT }
+        private var permissionRequest = PermissionRequest.NONE
     }
 
     private val REQ_POST_NOTIFICATIONS = 1001
@@ -74,6 +80,10 @@ class MainActivity : AppCompatActivity() {
     private var connectivityManager: ConnectivityManager? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var hotspotReceiver: android.content.BroadcastReceiver? = null
+
+    /** Deterministic path to the Node.js project directory. */
+    private val nodeDir: String
+        get() = applicationContext.filesDir.absolutePath + "/nodejs-project"
 
     external fun startNodeWithArguments(arguments: Array<String>): Int
 
@@ -90,13 +100,13 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this@MainActivity, HowToUseActivity::class.java))
         }
 
-    // Initialize log UI and ViewModel once in onCreate so state survives config changes
-    val scrollView = findViewById<android.widget.ScrollView>(R.id.scrollView)
-    val rvLogs = findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.rvLogs)
-    val layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this)
-    rvLogs.layoutManager = layoutManager
-    val logAdapterRv = LogAdapter()
-    rvLogs.adapter = logAdapterRv
+        // Initialize log UI and ViewModel once in onCreate so state survives config changes
+        val scrollView = findViewById<android.widget.ScrollView>(R.id.scrollView)
+        val rvLogs = findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.rvLogs)
+        val layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this)
+        rvLogs.layoutManager = layoutManager
+        val logAdapterRv = LogAdapter()
+        rvLogs.adapter = logAdapterRv
         logViewModel = androidx.lifecycle.ViewModelProvider(this, androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.getInstance(application)).get(LogViewModel::class.java)
         logViewModel.lines.observe(this) { newLines ->
             // Check if ScrollView is at bottom (user is viewing latest logs)
@@ -118,54 +128,49 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        if (!_startedNodeAlready) {
-            _startedNodeAlready = true
-            Log.d(TAG, "First run: starting asset copy and Node setup")
-            // Use lifecycleScope to perform IO work and then switch to UI for permission/service start
+        if (!startupInitiated) {
+            startupInitiated = true
+            Log.d(TAG, "First run: starting parallel asset-copy + permission-request")
+
+            // Track 1: IO work (delete stale log, copy assets if APK updated)
             lifecycleScope.launch(Dispatchers.IO) {
-                val nodeDir = applicationContext.filesDir.absolutePath + "/nodejs-project"
-                
+                val nodeDir = this@MainActivity.nodeDir
+
                 // Clear old log file to prevent showing stale logs on startup
                 try {
                     val logFile = File("$nodeDir/nms.log")
-                    if (logFile.exists()) {
-                        logFile.delete()
-                    }
-                } catch (e: Exception) {
-                    // Ignore errors clearing log file
-                }
+                    if (logFile.exists()) logFile.delete()
+                } catch (_: Exception) { /* ignore */ }
+
                 // Mark log as cleared and start polling now that it's safe
                 logCleared = true
-                launch(Dispatchers.Main) {
-                    logViewModel.startPolling()
-                }
-                
+                launch(Dispatchers.Main) { logViewModel.startPolling() }
+
                 if (wasAPKUpdated()) {
                     Log.d(TAG, "APK updated, copying assets...")
                     val nodeDirReference = File(nodeDir)
-                    if (nodeDirReference.exists()) {
-                        deleteFolderRecursively(File(nodeDir))
-                    }
+                    if (nodeDirReference.exists()) deleteFolderRecursively(File(nodeDir))
                     copyAssetFolder(applicationContext.assets, "nodejs-project", nodeDir)
                     saveLastUpdateTime()
                     Log.d(TAG, "Assets copied")
                 }
 
-                // Save nodeDir statically so it survives Activity recreation
-                pendingNodeDir = nodeDir
-                launch(Dispatchers.Main) {
-                    requestPermissionOrStart()
-                }
+                assetsReady = true
+                Log.d(TAG, "Assets ready")
+                launch(Dispatchers.Main) { tryStart() }
             }
+
+            // Track 2: Notification permission (runs on Main thread)
+            requestPermissionIfNeeded()
         } else {
             // Activity recreated (config change, permission dialog, etc.)
-            Log.d(TAG, "Activity recreated: _nodeProcessStarted=$_nodeProcessStarted pendingNodeDir=$pendingNodeDir pendingRequestNotification=$pendingRequestNotification")
+            Log.d(TAG, "Activity recreated: permissionRequest=$permissionRequest")
             logCleared = true
             logViewModel.startPolling()
 
-            // If Node hasn't actually started yet, continue the startup flow
-            if (!_nodeProcessStarted && pendingNodeDir != null) {
-                requestPermissionOrStart()
+            // If we were waiting for the permission dialog when the Activity was recreated, retry
+            if (permissionRequest == PermissionRequest.AWAITING_RESUME) {
+                requestPermissionIfNeeded()
             }
         }
 
@@ -191,41 +196,60 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Check notification permission and either request it or start the service + Node.
-     * Safe to call from any Activity instance since pendingNodeDir is static.
+     * Resolve notification permission (Track 2).
+     * Sets [permissionResult] and calls [tryStart] when resolved immediately,
+     * or defers to [onResume] / [onRequestPermissionsResult].
      */
-    private fun requestPermissionOrStart() {
-        val nodeDir = pendingNodeDir ?: return
+    private fun requestPermissionIfNeeded() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-                Log.d(TAG, "Notification permission already granted, starting service+node")
-                startServiceAndNode(nodeDir)
-            } else if (!_permissionRequestInFlight) {
+                Log.d(TAG, "Notification permission already granted")
+                permissionResult = true
+                tryStart()
+            // Guard: requestPermissions() can recreate the Activity; without this check
+            // the new Activity would re-call requestPermissions() in an infinite loop.
+            } else if (permissionRequest != PermissionRequest.IN_FLIGHT) {
                 Log.d(TAG, "Requesting notification permission")
-                pendingRequestNotification = true
                 if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
-                    pendingRequestNotification = false
-                    _permissionRequestInFlight = true
+                    permissionRequest = PermissionRequest.IN_FLIGHT
                     ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_POST_NOTIFICATIONS)
+                } else {
+                    permissionRequest = PermissionRequest.AWAITING_RESUME
                 }
             }
         } else {
-            startServiceAndNode(nodeDir)
+            // Pre-Tiramisu: no runtime permission needed
+            permissionResult = true
+            tryStart()
+        }
+    }
+
+    /**
+     * Convergence point: start service + Node when both prerequisites are met.
+     */
+    private fun tryStart() {
+        if (!assetsReady || permissionResult == null || nodeStarted) return
+        if (permissionResult == true) {
+            startServiceAndNode()
+        } else {
+            Toast.makeText(this, "Notification permission denied", Toast.LENGTH_LONG).show()
+            startNode()
         }
     }
 
     override fun onResume() {
         super.onResume()
-        if (pendingRequestNotification && pendingNodeDir != null && !_permissionRequestInFlight) {
-            pendingRequestNotification = false
-            _permissionRequestInFlight = true
-            Log.d(TAG, "onResume: requesting deferred notification permission")
+        if (permissionRequest == PermissionRequest.AWAITING_RESUME) {
+            // We're guaranteed to be RESUMED here, so request directly
+            // (don't go through requestPermissionIfNeeded which re-checks lifecycle state)
+            permissionRequest = PermissionRequest.IN_FLIGHT
+            Log.d(TAG, "Requesting notification permission (from onResume)")
             ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_POST_NOTIFICATIONS)
         }
     }
 
     // Helper to start the foreground service and then the node process
-    private fun startServiceAndNode(nodeDir: String) {
+    private fun startServiceAndNode() {
         try {
             val svcIntent = Intent(applicationContext, ForegroundService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -238,14 +262,17 @@ class MainActivity : AppCompatActivity() {
             e.printStackTrace()
         }
 
-        // Start Node on a background thread (not lifecycleScope) so it survives Activity recreation
-        _nodeProcessStarted = true
+        startNode()
+    }
+
+    /** Launch the Node.js process exactly once. */
+    private fun startNode() {
+        if (nodeStarted) return
+        nodeStarted = true
         Log.d(TAG, "Starting Node.js process")
         Thread {
             startNodeWithArguments(arrayOf("node", "$nodeDir/main.js"))
         }.start()
-
-    // btVersions button removed from layout; no-op here.
     }
 
     override fun onStart() {
@@ -549,26 +576,9 @@ class MainActivity : AppCompatActivity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQ_POST_NOTIFICATIONS) {
-            _permissionRequestInFlight = false
-            var granted = false
-            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                granted = true
-            }
-
-            val nodeDir = pendingNodeDir
-            pendingNodeDir = null
-
-            if (nodeDir == null) return
-
-            if (granted) {
-                runOnUiThread { startServiceAndNode(nodeDir) }
-            } else {
-                Toast.makeText(this, "Notification permission denied", Toast.LENGTH_LONG).show()
-                _nodeProcessStarted = true
-                Thread {
-                    startNodeWithArguments(arrayOf("node", "$nodeDir/main.js"))
-                }.start()
-            }
+            permissionResult = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+            Log.d(TAG, "Permission result: granted=$permissionResult")
+            tryStart()
         }
     }
 
