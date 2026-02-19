@@ -197,11 +197,10 @@ class MainActivity : AppCompatActivity() {
      * Check notification permission and either request it or start the service + Node.
      */
     private fun requestPermissionOrStart() {
-        val nodeDir = this.nodeDir
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
                 Log.d(TAG, "Notification permission already granted, starting service+node")
-                startServiceAndNode(nodeDir)
+                startServiceAndNode()
             } else if (startupState != Startup.PERMISSION_REQUESTED) {
                 Log.d(TAG, "Requesting notification permission")
                 startupState = Startup.AWAITING_PERMISSION
@@ -211,7 +210,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         } else {
-            startServiceAndNode(nodeDir)
+            startServiceAndNode()
         }
     }
 
@@ -225,7 +224,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     // Helper to start the foreground service and then the node process
-    private fun startServiceAndNode(nodeDir: String) {
+    private fun startServiceAndNode() {
         try {
             val svcIntent = Intent(applicationContext, ForegroundService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -238,14 +237,18 @@ class MainActivity : AppCompatActivity() {
             e.printStackTrace()
         }
 
-        // Start Node on a background thread (not lifecycleScope) so it survives Activity recreation
+        startNode()
+    }
+
+    /** Launch the Node.js process exactly once. */
+    private fun startNode() {
+        if (startupState == Startup.RUNNING) return
         startupState = Startup.RUNNING
         Log.d(TAG, "Starting Node.js process")
+        val dir = nodeDir
         Thread {
-            startNodeWithArguments(arrayOf("node", "$nodeDir/main.js"))
+            startNodeWithArguments(arrayOf("node", "$dir/main.js"))
         }.start()
-
-    // btVersions button removed from layout; no-op here.
     }
 
     override fun onStart() {
@@ -551,14 +554,10 @@ class MainActivity : AppCompatActivity() {
         if (requestCode == REQ_POST_NOTIFICATIONS) {
             val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
             if (granted) {
-                startServiceAndNode(nodeDir)
+                startServiceAndNode()
             } else {
                 Toast.makeText(this, "Notification permission denied", Toast.LENGTH_LONG).show()
-                startupState = Startup.RUNNING
-                val dir = nodeDir
-                Thread {
-                    startNodeWithArguments(arrayOf("node", "$dir/main.js"))
-                }.start()
+                startNode()
             }
         }
     }
