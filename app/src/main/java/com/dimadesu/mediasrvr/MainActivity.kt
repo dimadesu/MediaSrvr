@@ -217,9 +217,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (startupState == Startup.AWAITING_PERMISSION) {
-            startupState = Startup.PERMISSION_REQUESTED
-            Log.d(TAG, "onResume: requesting deferred notification permission")
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_POST_NOTIFICATIONS)
+            requestPermissionOrStart()
         }
     }
 
