@@ -206,6 +206,8 @@ class MainActivity : AppCompatActivity() {
                 Log.d(TAG, "Notification permission already granted")
                 permissionResult = true
                 tryStart()
+            // Guard: requestPermissions() can recreate the Activity; without this check
+            // the new Activity would re-call requestPermissions() in an infinite loop.
             } else if (permissionRequest != PermissionRequest.IN_FLIGHT) {
                 Log.d(TAG, "Requesting notification permission")
                 if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
