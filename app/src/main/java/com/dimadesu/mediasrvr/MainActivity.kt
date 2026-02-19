@@ -56,7 +56,7 @@ class MainActivity : AppCompatActivity() {
         enum class Startup {
             NOT_STARTED,           // Fresh launch, nothing done yet
             PREPARING,             // Asset copy / IO in progress
-            AWAITING_PERMISSION,   // Waiting to show or showing the notification permission dialog
+            AWAITING_RESUME_TO_REQUEST_PERMISSION,  // Need to request permission; deferred until Activity is RESUMED
             PERMISSION_REQUESTED,  // System dialog is visible (guards duplicate requestPermissions calls)
             RUNNING                // Node.js process has been started
         }
@@ -167,7 +167,7 @@ class MainActivity : AppCompatActivity() {
             logViewModel.startPolling()
 
             // If we were waiting for the permission dialog when the Activity was recreated, retry
-            if (startupState == Startup.AWAITING_PERMISSION) {
+            if (startupState == Startup.AWAITING_RESUME_TO_REQUEST_PERMISSION) {
                 requestPermissionOrStart()
             }
         }
@@ -203,7 +203,7 @@ class MainActivity : AppCompatActivity() {
                 startServiceAndNode()
             } else if (startupState != Startup.PERMISSION_REQUESTED) {
                 Log.d(TAG, "Requesting notification permission")
-                startupState = Startup.AWAITING_PERMISSION
+                startupState = Startup.AWAITING_RESUME_TO_REQUEST_PERMISSION
                 if (lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
                     startupState = Startup.PERMISSION_REQUESTED
                     ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_POST_NOTIFICATIONS)
@@ -216,7 +216,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (startupState == Startup.AWAITING_PERMISSION) {
+        if (startupState == Startup.AWAITING_RESUME_TO_REQUEST_PERMISSION) {
             requestPermissionOrStart()
         }
     }
