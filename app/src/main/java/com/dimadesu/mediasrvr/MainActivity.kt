@@ -100,6 +100,15 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this@MainActivity, HowToUseActivity::class.java))
         }
 
+        // Stop server button
+        val btStopServer = findViewById<Button>(R.id.btStopServer)
+        btStopServer.setOnClickListener {
+            val stopIntent = Intent(applicationContext, ForegroundService::class.java).apply {
+                action = ForegroundService.ACTION_STOP
+            }
+            applicationContext.startService(stopIntent)
+        }
+
         // Initialize log UI and ViewModel once in onCreate so state survives config changes
         val scrollView = findViewById<android.widget.ScrollView>(R.id.scrollView)
         val rvLogs = findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.rvLogs)
@@ -231,6 +240,7 @@ class MainActivity : AppCompatActivity() {
         if (!assetsReady || permissionResult == null || nodeStarted) return
         if (permissionResult == true) {
             startServiceAndNode()
+            findViewById<Button>(R.id.btStopServer).visibility = android.view.View.VISIBLE
         } else {
             Toast.makeText(this, "Notification permission denied", Toast.LENGTH_LONG).show()
             startNode()
