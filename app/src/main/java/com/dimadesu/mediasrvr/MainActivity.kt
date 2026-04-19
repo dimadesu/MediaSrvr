@@ -106,7 +106,14 @@ class MainActivity : AppCompatActivity() {
             btStopServer.isEnabled = true
         }
         btStopServer.setOnClickListener {
-            android.os.Process.killProcess(android.os.Process.myPid())
+            if (permissionResult == true) {
+                val stopIntent = Intent(applicationContext, ForegroundService::class.java).apply {
+                    action = ForegroundService.ACTION_STOP
+                }
+                applicationContext.startService(stopIntent)
+            } else {
+                android.os.Process.killProcess(android.os.Process.myPid())
+            }
         }
 
         // Initialize log UI and ViewModel once in onCreate so state survives config changes
