@@ -102,6 +102,9 @@ class MainActivity : AppCompatActivity() {
 
         // Stop server button
         val btStopServer = findViewById<Button>(R.id.btStopServer)
+        if (nodeStarted) {
+            btStopServer.visibility = android.view.View.VISIBLE
+        }
         btStopServer.setOnClickListener {
             val stopIntent = Intent(applicationContext, ForegroundService::class.java).apply {
                 action = ForegroundService.ACTION_STOP
