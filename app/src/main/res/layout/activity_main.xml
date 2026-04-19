@@ -39,6 +39,7 @@
                     android:layout_marginStart="16dp"
                     android:layout_marginTop="16dp"
                     android:layout_marginEnd="8dp"
+                    android:singleLine="true"
                     android:text="How to use" />
 
                 <Button
@@ -47,6 +48,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="16dp"
                     android:layout_marginEnd="16dp"
+                    android:singleLine="true"
                     android:text="Stop server"
                     android:visibility="gone" />
 
