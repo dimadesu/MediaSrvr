@@ -100,6 +100,22 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this@MainActivity, HowToUseActivity::class.java))
         }
 
+        // Stop server button
+        val btStopServer = findViewById<Button>(R.id.btStopServer)
+        if (nodeStarted) {
+            btStopServer.isEnabled = true
+        }
+        btStopServer.setOnClickListener {
+            if (permissionResult == true) {
+                val stopIntent = Intent(applicationContext, ForegroundService::class.java).apply {
+                    action = ForegroundService.ACTION_STOP
+                }
+                applicationContext.startService(stopIntent)
+            } else {
+                android.os.Process.killProcess(android.os.Process.myPid())
+            }
+        }
+
         // Initialize log UI and ViewModel once in onCreate so state survives config changes
         val scrollView = findViewById<android.widget.ScrollView>(R.id.scrollView)
         val rvLogs = findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.rvLogs)
@@ -235,6 +251,7 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Notification permission denied", Toast.LENGTH_LONG).show()
             startNode()
         }
+        findViewById<Button>(R.id.btStopServer).isEnabled = true
     }
 
     override fun onResume() {
