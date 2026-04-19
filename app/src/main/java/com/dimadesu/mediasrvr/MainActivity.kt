@@ -103,7 +103,7 @@ class MainActivity : AppCompatActivity() {
         // Stop server button
         val btStopServer = findViewById<Button>(R.id.btStopServer)
         if (nodeStarted) {
-            btStopServer.visibility = android.view.View.VISIBLE
+            btStopServer.isEnabled = true
         }
         btStopServer.setOnClickListener {
             android.os.Process.killProcess(android.os.Process.myPid())
@@ -244,7 +244,7 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Notification permission denied", Toast.LENGTH_LONG).show()
             startNode()
         }
-        findViewById<Button>(R.id.btStopServer).visibility = android.view.View.VISIBLE
+        findViewById<Button>(R.id.btStopServer).isEnabled = true
     }
 
     override fun onResume() {
