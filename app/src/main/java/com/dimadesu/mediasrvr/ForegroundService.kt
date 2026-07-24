@@ -138,7 +138,10 @@ class ForegroundService : Service() {
             val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
             wm?.let {
                 if (wifiLock?.isHeld != true) {
-                    // WIFI_MODE_FULL_HIGH_PERF is preferable for best throughput on supported devices
+                    // WIFI_MODE_FULL_HIGH_PERF is kept intentionally despite deprecation: the suggested
+                    // replacement WIFI_MODE_FULL_LOW_LATENCY is only granted while the app is in the
+                    // foreground, whereas this server must keep a strong Wi‑Fi lock while backgrounded.
+                    @Suppress("DEPRECATION")
                     wifiLock = it.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "mediasrvr:wifi_lock")
                     wifiLock?.setReferenceCounted(false)
                     wifiLock?.acquire()
