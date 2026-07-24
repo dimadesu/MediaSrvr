@@ -69,11 +69,7 @@ class ForegroundService : Service() {
         if (intent?.action == ACTION_STOP) {
             // release locks before stopping
             releaseWakeLocks()
-            try {
-                stopForeground(STOP_FOREGROUND_REMOVE)
-            } catch (e: Exception) {
-                stopForeground(true)
-            }
+            stopForegroundCompat()
             stopSelf()
             // Kill the process to ensure native Node instance is terminated.
             try {
@@ -92,17 +88,27 @@ class ForegroundService : Service() {
         return null
     }
 
-    @Suppress("DEPRECATION")
     override fun onDestroy() {
-        // Preferred: use STOP_FOREGROUND_REMOVE on newer APIs; keep fallback for compatibility
-        try {
-            stopForeground(STOP_FOREGROUND_REMOVE)
-        } catch (e: Exception) {
-            stopForeground(true)
-        }
+        stopForegroundCompat()
         // ensure locks are released if service is destroyed
         releaseWakeLocks()
         super.onDestroy()
+    }
+
+    /**
+     * Remove the foreground notification across API levels.
+     * stopForeground(int) is API 24+; the boolean overload is used as a fallback
+     * on API 21–23 (below our minSdk headroom). A version gate avoids both the
+     * deprecation warning and a NoSuchMethodError (an Error, not an Exception)
+     * that a try/catch would not catch on older devices.
+     */
+    private fun stopForegroundCompat() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
     }
 
     // WakeLock and WifiLock handling
