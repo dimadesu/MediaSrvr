@@ -6,11 +6,11 @@
     android:id="@+id/scrollView"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:fitsSystemWindows="true"
     android:fillViewport="true"
     android:background="@color/logBackground">
 
     <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/mainContent"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         tools:context="com.dimadesu.mediasrvr.MainActivity">

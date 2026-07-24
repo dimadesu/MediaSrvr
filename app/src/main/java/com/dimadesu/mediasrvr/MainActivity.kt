@@ -12,6 +12,9 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -93,6 +96,17 @@ class MainActivity : AppCompatActivity() {
         )
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        // Apply system bar insets as padding so content isn't drawn under the
+        // status/navigation bars under enforced edge-to-edge (targetSdk 35+).
+        val mainContent = findViewById<android.view.View>(R.id.mainContent)
+        ViewCompat.setOnApplyWindowInsetsListener(mainContent) { view, insets ->
+            val bars = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+            )
+            view.updatePadding(top = bars.top, left = bars.left, right = bars.right, bottom = bars.bottom)
+            insets
+        }
 
         // How to use button
         val btHowToUse = findViewById<Button>(R.id.btHowToUse)
