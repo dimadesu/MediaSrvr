@@ -119,9 +119,11 @@ class ForegroundService : Service() {
         try {
             val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
             if (wakeLock?.isHeld != true) {
-                // Use PARTIAL_WAKE_LOCK with indefinite timeout to keep CPU running even when screen is off
+                // Use PARTIAL_WAKE_LOCK with indefinite timeout to keep CPU running even when screen is off.
+                // ACQUIRE_CAUSES_WAKEUP is intentionally omitted: it is a documented no-op for
+                // PARTIAL_WAKE_LOCK (it only ever affected screen/full wakelocks) and is deprecated.
                 wakeLock = pm.newWakeLock(
-                    PowerManager.PARTIAL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                    PowerManager.PARTIAL_WAKE_LOCK,
                     "mediasrvr:node_wakelock"
                 )
                 // rely on explicit releaseWakeLocks() instead of a timeout; make non-reference-counted
@@ -129,7 +131,7 @@ class ForegroundService : Service() {
                 // Acquire without timeout to keep running indefinitely
                 @Suppress("DEPRECATION")
                 wakeLock?.acquire()
-                Log.i(TAG, "acquired partial wakelock with ACQUIRE_CAUSES_WAKEUP (explicit release required)")
+                Log.i(TAG, "acquired partial wakelock (explicit release required)")
             }
 
             // Optional Wi‑Fi lock to keep Wi‑Fi radio active (requires CHANGE_WIFI_STATE)
