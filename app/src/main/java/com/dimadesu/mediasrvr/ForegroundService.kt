@@ -69,11 +69,7 @@ class ForegroundService : Service() {
         if (intent?.action == ACTION_STOP) {
             // release locks before stopping
             releaseWakeLocks()
-            try {
-                stopForeground(STOP_FOREGROUND_REMOVE)
-            } catch (e: Exception) {
-                stopForeground(true)
-            }
+            stopForegroundCompat()
             stopSelf()
             // Kill the process to ensure native Node instance is terminated.
             try {
@@ -92,17 +88,27 @@ class ForegroundService : Service() {
         return null
     }
 
-    @Suppress("DEPRECATION")
     override fun onDestroy() {
-        // Preferred: use STOP_FOREGROUND_REMOVE on newer APIs; keep fallback for compatibility
-        try {
-            stopForeground(STOP_FOREGROUND_REMOVE)
-        } catch (e: Exception) {
-            stopForeground(true)
-        }
+        stopForegroundCompat()
         // ensure locks are released if service is destroyed
         releaseWakeLocks()
         super.onDestroy()
+    }
+
+    /**
+     * Remove the foreground notification across API levels.
+     * stopForeground(int) is API 24+; the boolean overload is used as a fallback
+     * on API 21–23 (below our minSdk headroom). A version gate avoids both the
+     * deprecation warning and a NoSuchMethodError (an Error, not an Exception)
+     * that a try/catch would not catch on older devices.
+     */
+    private fun stopForegroundCompat() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
     }
 
     // WakeLock and WifiLock handling
@@ -113,9 +119,11 @@ class ForegroundService : Service() {
         try {
             val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
             if (wakeLock?.isHeld != true) {
-                // Use PARTIAL_WAKE_LOCK with indefinite timeout to keep CPU running even when screen is off
+                // Use PARTIAL_WAKE_LOCK with indefinite timeout to keep CPU running even when screen is off.
+                // ACQUIRE_CAUSES_WAKEUP is intentionally omitted: it is a documented no-op for
+                // PARTIAL_WAKE_LOCK (it only ever affected screen/full wakelocks) and is deprecated.
                 wakeLock = pm.newWakeLock(
-                    PowerManager.PARTIAL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                    PowerManager.PARTIAL_WAKE_LOCK,
                     "mediasrvr:node_wakelock"
                 )
                 // rely on explicit releaseWakeLocks() instead of a timeout; make non-reference-counted
@@ -123,14 +131,17 @@ class ForegroundService : Service() {
                 // Acquire without timeout to keep running indefinitely
                 @Suppress("DEPRECATION")
                 wakeLock?.acquire()
-                Log.i(TAG, "acquired partial wakelock with ACQUIRE_CAUSES_WAKEUP (explicit release required)")
+                Log.i(TAG, "acquired partial wakelock (explicit release required)")
             }
 
             // Optional Wi‑Fi lock to keep Wi‑Fi radio active (requires CHANGE_WIFI_STATE)
             val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
             wm?.let {
                 if (wifiLock?.isHeld != true) {
-                    // WIFI_MODE_FULL_HIGH_PERF is preferable for best throughput on supported devices
+                    // WIFI_MODE_FULL_HIGH_PERF is kept intentionally despite deprecation: the suggested
+                    // replacement WIFI_MODE_FULL_LOW_LATENCY is only granted while the app is in the
+                    // foreground, whereas this server must keep a strong Wi‑Fi lock while backgrounded.
+                    @Suppress("DEPRECATION")
                     wifiLock = it.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "mediasrvr:wifi_lock")
                     wifiLock?.setReferenceCounted(false)
                     wifiLock?.acquire()

@@ -3,12 +3,12 @@ apply plugin: 'kotlin-android'
 
 android {
     namespace 'com.dimadesu.mediasrvr'
-    compileSdkVersion 35
+    compileSdkVersion 36
     ndkVersion "27.0.12077973"
     defaultConfig {
     applicationId "com.dimadesu.mediasrvr"
     minSdkVersion 21
-    targetSdkVersion 35
+    targetSdkVersion 36
         versionCode 12
         versionName "1.5.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
@@ -132,6 +132,15 @@ dependencies {
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.6.1'
     implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.1'
     testImplementation 'junit:junit:4.13.2'
+}
+
+// Pin the JDK that RUNS the build (Kotlin + Java compilation) to 17, AGP 8.9's
+// minimum. Gradle resolves an installed JDK 17 or auto-provisions one, so the
+// build no longer depends on whichever JDK happens to be on the developer's or
+// CI machine's PATH. This is independent of the bytecode target below, which
+// stays at Java 11 (correct for minSdk 21).
+kotlin {
+    jvmToolchain(17)
 }
 
 // Ensure Kotlin compiler JVM target matches Java compile options (Java 11)
