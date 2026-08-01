@@ -134,13 +134,10 @@ dependencies {
     testImplementation 'junit:junit:4.13.2'
 }
 
-// Pin the JDK that RUNS the build (Kotlin + Java compilation) to 17, AGP 8.9's
-// minimum. Gradle resolves an installed JDK 17 or auto-provisions one, so the
-// build no longer depends on whichever JDK happens to be on the developer's or
-// CI machine's PATH. This is independent of the bytecode target below, which
-// stays at Java 11 (correct for minSdk 21).
+// Pin the build JDK to 21 (current LTS). AGP 8.9 requires JDK 17+, which this
+// satisfies. Bytecode target stays at Java 11 (minSdk 21).
 kotlin {
-    jvmToolchain(17)
+    jvmToolchain(21)
 }
 
 // Ensure Kotlin compiler JVM target matches Java compile options (Java 11)
